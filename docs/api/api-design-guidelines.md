@@ -61,6 +61,6 @@ adr: []
 ## References
 
 - [COP-ARCH-004](../architecture/integration-architecture.md)
-- [COP-API-003](api-versioning-and-compatibility.md)
+- [COP-API-003](versioning-and-compatibility.md)
 - [COP-SEC-002](../security/iam-and-authorization.md)
 - [COP-STD-001](../standards/terminology.md)

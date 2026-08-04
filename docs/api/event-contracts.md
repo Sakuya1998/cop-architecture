@@ -63,4 +63,4 @@ adr: []
 - [COP-ARCH-004](../architecture/integration-architecture.md)
 - [COP-DOM-005](../domains/observability-domain.md)
 - [COP-DOM-006](../domains/alerting-domain.md)
-- [COP-API-003](api-versioning-and-compatibility.md)
+- [COP-API-003](versioning-and-compatibility.md)
