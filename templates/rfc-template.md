@@ -1,20 +1,20 @@
 ---
-id: "<COP-RFC-XXX>"
-title: "<RFC 标题>"
+id: "<RFC-0001>"
+title: "<English formal title>"
 status: "<draft | review | accepted | rejected | superseded>"
 authors:
   - "<作者姓名或角色>"
 created: "<YYYY-MM-DD>"
 updated: "<YYYY-MM-DD>"
-related:
-  - "<受影响权威文档 ID 或链接>"
-adr:
-  - "<关联 ADR ID 或链接；无则使用空列表>"
+related: []
+adr: []
 ---
 
 # <RFC 标题>
 
 > RFC 状态仅可为 `draft` → `review` → `accepted` / `rejected` → `superseded`。被接受的 RFC 必须链接相应 ADR，并更新所有受影响的权威文档。
+>
+> YAML 中的 `related` 和 `adr` 仅填写 ID 或编号；相对链接应放在 References 中。
 
 ## Summary
 

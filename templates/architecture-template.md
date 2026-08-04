@@ -1,22 +1,21 @@
 ---
-id: "<COP-ARCH-XXX>"
-title: "<架构文档标题>"
+id: "<stable document ID from the approved catalog>"
+title: "<English formal title>"
 status: "<draft | review | accepted | deprecated>"
-version: "<语义化版本或组织约定版本>"
+version: "<semantic version, e.g. 0.1.0>"
 owners:
   - "<负责团队或角色>"
 last_updated: "<YYYY-MM-DD>"
-related:
-  - "<相关权威文档 ID 或链接>"
-rfc:
-  - "<相关 RFC ID 或链接；无则使用空列表>"
-adr:
-  - "<相关 ADR ID 或链接；无则使用空列表>"
+related: []
+rfc: []
+adr: []
 ---
 
 # <架构文档标题>
 
 > 权威文档状态仅可为 `draft` → `review` → `accepted` → `deprecated`。`accepted` 表示当前有效的架构基线；`deprecated` 表示不再推荐使用，并应链接替代文档（如有）。
+>
+> YAML 中的 `related`、`rfc` 和 `adr` 仅填写稳定文档 ID；相对链接应放在 References 中。
 
 ## Purpose
 

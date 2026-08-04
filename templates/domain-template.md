@@ -1,22 +1,21 @@
 ---
-id: "<COP-DOM-XXX>"
-title: "<领域文档标题>"
+id: "<stable document ID from the approved catalog>"
+title: "<English formal title>"
 status: "<draft | review | accepted | deprecated>"
-version: "<语义化版本或组织约定版本>"
+version: "<semantic version, e.g. 0.1.0>"
 owners:
   - "<负责团队或角色>"
 last_updated: "<YYYY-MM-DD>"
-related:
-  - "<相关权威文档 ID 或链接>"
-rfc:
-  - "<相关 RFC ID 或链接；无则使用空列表>"
-adr:
-  - "<相关 ADR ID 或链接；无则使用空列表>"
+related: []
+rfc: []
+adr: []
 ---
 
 # <领域文档标题>
 
 > 权威文档状态仅可为 `draft` → `review` → `accepted` → `deprecated`。`accepted` 表示当前有效的领域基线；`deprecated` 表示不再推荐使用，并应链接替代文档（如有）。
+>
+> YAML 中的 `related`、`rfc` 和 `adr` 仅填写稳定文档 ID；相对链接应放在 References 中。
 
 ## Purpose
 
@@ -48,11 +47,13 @@ adr:
 
 ## Commands and Queries
 
-<列出命令和查询的意图、输入、输出、授权主体与可见性约束。>
+<说明命令和查询的业务意图、前置条件、结果语义、授权和可见性约束；传输层和 wire schema 应维护在 API 文档中。>
 
 ## Domain Events
 
-<定义领域事件的触发条件、载荷语义、生产者和消费者边界；COP-API-002 接受后，事件定义必须与其保持一致。>
+<定义领域事件的触发条件、载荷语义、生产者和消费者边界；不要填入未经确认的领域事实。>
+
+领域事件必须引用 COP-API-002；仅当 COP-API-002 的状态为 `accepted` 时，该规范具有约束力。
 
 ## Invariants
 

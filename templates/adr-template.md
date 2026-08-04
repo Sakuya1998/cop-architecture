@@ -1,18 +1,20 @@
 ---
-id: "<COP-ADR-XXX>"
-title: "<ADR 标题>"
+id: "<ADR-0001>"
+title: "<English formal title>"
 status: "<proposed | accepted | deprecated | superseded>"
 date: "<YYYY-MM-DD>"
 decision_makers:
   - "<决策者姓名或角色>"
-rfc: "<来源 RFC ID 或链接；无则说明原因>"
-supersedes: "<被替代 ADR ID 或空值>"
-superseded_by: "<替代此 ADR 的 ID 或空值>"
+rfc: null
+supersedes: null
+superseded_by: null
 ---
 
 # <ADR 标题>
 
 > ADR 状态仅可为 `proposed` → `accepted` → `deprecated` / `superseded`。ADR 记录“为什么作出此决定”；当前状态的架构、领域和接口细节应维护在权威文档中。
+>
+> YAML 中的 `rfc`、`supersedes` 和 `superseded_by` 仅填写 ID 或编号；没有对应记录时使用 `null`。相对链接应放在 References 中。
 
 ## Context
 

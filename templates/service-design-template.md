@@ -1,23 +1,21 @@
 ---
-id: "<COP-SVC-XXX>"
-title: "<服务设计标题>"
-status: "<引用的权威文档状态；不得另设服务生命周期>"
+id: "<stable service-design ID defined by an accepted naming rule>"
+title: "<English formal title>"
+source_status_requirement: accepted
 owners:
   - "<负责团队或角色>"
 last_updated: "<YYYY-MM-DD>"
-platform_documents:
-  - "<已 accepted 的平台/架构文档 ID 或链接>"
-domain_documents:
-  - "<已 accepted 的领域文档 ID 或链接>"
-rfc:
-  - "<相关 RFC ID 或链接；无则使用空列表>"
-adr:
-  - "<相关 ADR ID 或链接；无则使用空列表>"
+platform_documents: []
+domain_documents: []
+rfc: []
+adr: []
 ---
 
 # <服务设计标题>
 
-> 生成门槛：仅可基于已 `accepted` 的平台/架构文档和领域文档编写本设计。`status` 仅反映其引用权威文档的状态，不创建新的、相冲突的生命周期。
+> 生成门槛：仅可基于已 `accepted` 的平台/架构文档和领域文档编写本设计；每一份平台/架构和领域来源文档都必须为 `accepted`。
+>
+> 服务设计是派生的实现输入，不是权威文档生命周期，也不创建新的权威来源。YAML 中的 `platform_documents`、`domain_documents`、`rfc` 和 `adr` 仅填写 ID 或编号；相对链接应放在 References 中。
 
 ## Service Responsibility
 
