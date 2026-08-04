@@ -1,28 +1,28 @@
-# COP Architecture Principles Content Implementation Plan
+# COP 架构原则内容实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **面向执行代理：** 必须使用子技能 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans，按任务逐项实施本计划。步骤使用 checkbox（`- [ ]`）语法跟踪。
 
-**Goal:** Replace the `COP-PRI-001` initialization prose with the approved decision hierarchy, core architecture principles, verification rules, and exception governance while preserving its metadata contract and draft gate.
+**Goal:** 在保持元数据契约和 `draft` 门禁不变的前提下，将 `COP-PRI-001` 的初始化正文替换为已批准的决策层级、核心架构原则、验证规则和例外治理。
 
-**Architecture:** Keep the stable authoritative-document shape unchanged. Organize the approved rules under decision priority, core principles, review evidence, exception governance, and success criteria; retain the existing catalog `Purpose`, `Scope`, `Non-goals`, `Implementation Guidance`, and `References` contracts.
+**Architecture:** 保持稳定的权威文档结构不变。在决策优先级、核心原则、评审证据、例外治理和成功标准下组织已批准规则；保留既有 `Purpose`、`Scope`、`Non-goals`、`Implementation Guidance` 和 `References` 契约。
 
-**Tech Stack:** Markdown, YAML front matter, PowerShell verification, Git.
+**Tech Stack:** Markdown、YAML front matter、PowerShell 验证、Git。
 
 ---
 
-### Task 1: Write and Verify Architecture Principles
+### 任务 1：编写并验证架构原则
 
-**Files:**
-- Modify: `docs/principles/architecture-principles.md`
-- Test: PowerShell structural, fixed-section, and link checks in the worktree
+**文件：**
+- 修改：`docs/principles/architecture-principles.md`
+- 测试：在 worktree 中运行 PowerShell 结构、固定章节和链接检查
 
-- [ ] **Step 1: Preserve the authoritative metadata and fixed sections**
+- [ ] **步骤 1：保留权威元数据和固定章节**
 
-Keep the current YAML front matter byte-for-byte equivalent, including `id: COP-PRI-001`, `status: draft`, version, owners, update date, related IDs, and empty RFC/ADR arrays. Keep the H1, `Purpose`, `Scope`, `Non-goals`, `Implementation Guidance`, and three existing `References` links unchanged.
+保持现有 YAML front matter 逐字节等价，包括 `id: COP-PRI-001`、`status: draft`、版本、owners、更新时间、related IDs 和空 RFC/ADR 数组。保持 H1、`Purpose`、`Scope`、`Non-goals`、`Implementation Guidance` 和三个既有 `References` 链接不变。
 
-- [ ] **Step 2: Run the failing structural check**
+- [ ] **步骤 2：运行失败的结构检查（RED）**
 
-Run from the worktree root before editing:
+编辑前从 worktree 根目录运行：
 
 ```powershell
 $file = Get-Item 'docs/principles/architecture-principles.md'
@@ -39,129 +39,134 @@ foreach ($value in $required) {
 }
 ```
 
-Expected: FAIL with `Missing: ### Decision Priority`, proving the initialization skeleton does not satisfy the approved structure.
+预期结果：以 `Missing: ### Decision Priority` 失败，证明初始化骨架不满足已批准结构。
 
-- [ ] **Step 3: Replace `Context` and add the decision model**
+- [ ] **步骤 3：替换 `Context` 并加入决策模型**
 
-Replace `Context` with prose that states:
+将 `Context` 替换为说明以下内容的正文：
 
-- The document applies the platform direction and scope from `COP-VIS-001` and `COP-VIS-002`.
-- It provides common decision rules for later architecture and domain designs.
-- `COP-ARCH-002` and `COP-DOM-001` retain responsibility for detailed logical architecture and domain boundaries.
-- The principles remain non-binding until the document becomes `accepted`.
+- 本文承接 `COP-VIS-001` 与 `COP-VIS-002` 的平台方向和范围。
+- 本文为后续架构与领域设计提供共同决策规则。
+- `COP-ARCH-002` 与 `COP-DOM-001` 继续分别负责详细逻辑架构和领域边界。
+- 本文在状态变为 `accepted` 前不形成实现约束。
 
-Under `Architecture or Model`, add `### Decision Priority` with this exact precedence:
+在 `Architecture or Model` 下添加 `### Decision Priority`，并保持以下精确顺序：
 
-1. Security, authorization, and isolation boundaries.
-2. Data correctness and stable resource identity.
-3. Reliability and operability.
-4. Evolvability and open integration.
-5. Simplicity and delivery efficiency.
+1. 安全、权限与隔离边界。
+2. 数据正确性与稳定资源身份。
+3. 可靠性与可运维性。
+4. 可演进性与开放集成。
+5. 简单性与交付效率。
 
-State that higher priorities override lower priorities. At the same level, prefer the simpler, verifiable, reversible option. Unclear conflicts or changes to precedence require RFC/ADR and authoritative-document review.
+低优先级目标不得以违反更高优先级的适用约束为代价。只有满足所有适用的更高优先级约束的候选方案，才比较低优先级目标。同级冲突选择更简单、可验证、可回退或可恢复的方案。无法明确裁决或需要改变优先级时，必须进入 RFC/ADR 和相关权威文档评审。
 
-- [ ] **Step 4: Add `Core Principles` with eight exact subsections**
+- [ ] **步骤 4：添加包含八个精确子节的 `Core Principles`**
 
-Add `### Core Principles` and these subsections:
+添加 `### Core Principles` 和以下子节：
 
 #### Secure by Default
 
-- Default deny and least privilege.
-- Explicit organization, tenant, identity, resource, and access context.
-- Store controlled credential references rather than propagating secret values as ordinary domain data.
-- Audit the actor, target, result, and time of sensitive operations.
-- Do not trust management-plane, managed-environment, or external-system traffic solely because of network location.
+- 默认拒绝并实施最小权限。
+- 显式表达组织、租户、身份、资源和访问上下文。
+- 保存受控凭据引用，不把敏感值作为普通领域数据传播。
+- 审计敏感操作的主体、目标、结果和时间。
+- 管理面、受管环境和外部系统不能仅因网络位置而默认互信。
 
 #### Stable Resource Identity and Data Correctness
 
-- Stable, traceable unified resource identity with an explicit authority.
-- Authority governs identity semantics and write responsibility without requiring one service or database.
-- Expose source, synchronization status, and freshness for external data.
-- Represent conflict, unknown, and stale states explicitly; do not silently overwrite them into apparent success.
+- 统一资源身份稳定、可追踪，并具有明确权威来源。
+- 权威来源约束身份语义和写入责任，但不预设单一服务或数据库。
+- 外部数据暴露来源、同步状态和新鲜度。
+- 冲突、未知和过期状态显式表达，不能静默覆盖为成功。
 
 #### Domain-oriented Boundaries
 
-- Divide domains by capability, data ownership, and reason to change.
-- Give each boundary clear responsibilities, inputs, outputs, and dependencies.
-- Do not equate a domain boundary with a microservice, package, or database count.
-- Technical layers and workflows may organize internals but cannot replace domain responsibility boundaries.
+- 按业务能力、数据所有权和变化原因划分领域。
+- 每个边界具有明确职责、输入、输出和依赖。
+- 领域边界不等同于微服务、代码包或数据库数量。
+- 技术分层与流程可以组织领域内部，但不能替代领域责任边界。
 
 #### Domain Data Ownership
 
-- Each domain owns its write model, invariants, and write semantics.
-- Prohibit one domain from directly writing another domain's storage outside a Contract.
-- Use a stable Contract or governed read model for cross-domain reads.
-- Replicated read models cannot become undeclared authorities.
+- 每个领域拥有自己的写模型、不变量和写入语义。
+- 禁止一个领域绕过 Contract 直接写入另一个领域的数据存储。
+- 跨领域读取通过稳定 Contract 或受控读模型完成。
+- 受控读模型必须声明所有者、来源 Contract、构建或更新方式、数据新鲜度和失败语义。
+- 不得以受控读模型名义直接读取其他领域的私有存储。
+- 复制的读模型不能成为未声明的新权威来源。
 
 #### Contract-first Interaction
 
-- State that Contract-first extends rather than rejects the existing `API-first` scope, and that an API is one form of cross-boundary Contract.
-- Define semantics, ownership, compatibility, and failure behavior before choosing communication technology.
-- Use synchronous APIs for queries or commands that need an immediate result; use events for state propagation and decoupling.
-- Do not require all interactions to be synchronous or all to be event-driven.
-- Version Contracts and define rejection, timeout, retry, partial-failure, and delayed-propagation behavior.
+- Contract-first 扩展而非否定现有 `API-first` 范围；API 是跨边界 Contract 的一种形式。
+- 先定义语义、所有权、兼容性和失败行为，再选择通信技术。
+- 需要即时结果的查询或命令可以使用同步 API；状态传播和解耦可以使用事件。
+- 不强制所有交互同步，也不强制所有交互事件化。
+- Contract 支持版本演进，并按交互类型定义实际适用的失败语义；不要求每个 Contract 机械声明全部失败模式。
 
 #### Observable and Recoverable Operations
 
-- Each runnable component exposes health, dependency, processing-state, and data-freshness signals.
-- Isolate failures so one external dependency cannot spread failure without bounds.
-- Make retries idempotent or provide equivalent duplicate-processing protection.
-- Define verifiable degradation, recovery, and resynchronization paths.
-- Event consumers handle duplicates, reordering, and delay without assuming undeclared arrival order.
+- 所有可运行组件必须暴露健康和依赖信号；只有承担处理、复制或同步职责的组件才必须暴露处理状态和数据新鲜度信号。
+- 隔离故障，避免单一外部依赖无边界扩散失败。
+- 可重试操作及其处理必须幂等，或提供等价的重复处理保护。
+- 定义可验证的降级、恢复和重新同步路径。
+- 事件消费者处理重复、乱序和延迟，不能依赖未声明的到达顺序。
 
 #### Open and Evolvable Architecture
 
-- Isolate cloud-provider, Kubernetes, and observability-product semantics behind Adapters or equivalent stable boundaries.
-- Keep the core domain model independent of one cloud provider, cluster, or storage engine.
-- Give Contract changes a compatibility strategy and major changes migration and rollback paths.
-- Keep self-hosted operation independent without breaking future organization and tenant isolation.
+- 通过 Adapter 或等价稳定边界隔离云厂商、Kubernetes 和可观测产品语义。
+- 核心领域模型不绑定单一云厂商、集群或存储引擎。
+- Contract 变更具有兼容策略；重大变更优先具备迁移和回退路径。
+- 确实不可回退时，RFC/ADR 必须明确不可逆点、备份/恢复或 forward-recovery 方案、验证证据和额外批准条件。
+- 自托管可以独立运行，同时不破坏未来组织和租户隔离能力。
 
 #### Simplicity and Incremental Evolution
 
-- Add only complexity justified by current reviewed needs.
-- Prefer the smallest understandable, verifiable, replaceable, reversible design.
-- Do not prebuild architecture for capabilities absent from the roadmap or RFC/ADR review.
-- Never trade away security, data correctness, or recovery merely for delivery efficiency.
+- 只引入当前已评审需求证明需要的复杂度。
+- 选择最小、可理解、可验证、可替换的设计，并优先选择可回退方案；不可回退方案遵循上述治理。
+- 不为路线图之外或未经 RFC/ADR 评审的能力预建架构。
+- 不得为交付效率降低安全、数据正确性或恢复能力。
 
-- [ ] **Step 5: Add review, failure, exception, and success rules**
+- [ ] **步骤 5：添加评审、失败、例外和成功规则**
 
-Add `### Review and Evidence`:
+添加 `### Review and Evidence`：
 
-- Treat changes to domain boundaries, data authority, cross-domain Contracts, security or tenant boundaries, failure behavior, external integration boundaries, or migration paths as major designs.
-- Require each major design to state applicable principles and priority; domain, data, and Contract ownership; security, isolation, failure, and compatibility impact; verification evidence; migration, rollback, and alternatives.
-- Put automatable Contract compatibility, authorization boundaries, idempotency, data invariants, migration, and rollback checks into tests or CI.
-- Put domain boundaries, responsibility ownership, complexity, vendor coupling, and operational risk into an architecture review checklist.
-- Define synchronous rejection, timeout, retry, and partial-failure behavior; asynchronous duplicate, reordering, delay, and consumption-failure behavior; and external synchronization source, state, freshness, and conflict behavior.
-- Keep unknown, degraded, and failed states distinguishable from success.
+- 将新增或改变领域边界、数据权威、跨领域 Contract、安全或租户边界、故障行为、外部集成边界或迁移路径的设计视为重大设计。
+- 每项重大设计说明适用原则和优先级；领域、数据和 Contract 所有权；安全、隔离、故障和兼容性影响；验证证据；迁移、回退或 forward-recovery 方案及替代方案。
+- 可自动化的 Contract 兼容、权限边界、幂等、数据不变量、迁移、回退或 forward-recovery 检查进入测试或 CI。
+- 领域边界、责任归属、复杂度、供应商绑定和运营风险进入架构评审清单。
+- 各类交互必须识别并定义实际适用的失败语义；不适用项无需机械声明，但不能留下未处理或无法区分的失败状态。
+- 同步交互可考虑拒绝、超时、重试和部分失败；异步交互可考虑重复、乱序、延迟和消费失败；外部同步可考虑来源、同步状态、新鲜度和冲突状态。
+- 未知、降级和失败状态必须与成功状态可区分。
 
-Add `### Exception Governance`:
+添加 `### Exception Governance`：
 
-- Block designs that violate higher-priority principles by default.
-- Require RFC/ADR records for exceptions, including reason, scope, alternatives, owner, verification, and expiry or exit condition.
-- Allow an accepted ADR to approve a bounded exception without implicitly changing the principle document.
-- Require updates to `COP-PRI-001` and affected authoritative documents for lasting principle or priority changes.
-- Reject “temporary” as a reason to bypass review.
+- 违反任何适用原则的设计默认阻断；只有获批且有边界的例外才能继续。
+- 例外通过 RFC/ADR 记录原因、范围、备选方案、责任人、验证措施以及到期或退出条件。
+- RFC 接受后必须关联 `accepted` ADR，并在受影响的权威文档中记录该例外。
+- `accepted` ADR 只能批准明确且有边界的例外，不能隐式改变原则文档。
+- 长期改变原则或优先级时，更新 `COP-PRI-001` 和受影响的权威文档。
+- “临时方案”不能成为绕过评审的理由。
 
-Add `### Success Criteria` with these outcomes:
+添加 `### Success Criteria`，包含以下结果：
 
-- Major designs identify applicable principles, precedence, and evidence.
-- Security, authorization, tenant, and credential boundaries stay explicit.
-- Stable resource identity, source, synchronization state, and freshness are traceable.
-- Domain write models and invariants have one responsible owner with no direct cross-domain storage writes.
-- Cross-domain interactions define Contracts, failure semantics, and compatibility.
-- Failure isolation, idempotent retry, degradation, and recovery are verifiable.
-- External dependencies use stable boundaries without binding the core model to one vendor.
-- Major changes are migratable and reversible; exceptions have approved RFC/ADR records.
+- 重大设计能够指出适用原则、优先级和验证证据。
+- 安全、权限、租户和凭据边界保持显式。
+- 稳定资源身份、来源、同步状态和新鲜度可追踪。
+- 领域写模型和不变量具有唯一责任方，不发生跨领域直接写存储。
+- 跨领域交互定义 Contract、实际适用的失败语义和兼容策略。
+- 故障隔离、可重试操作的幂等处理、降级和恢复可验证。
+- 外部依赖通过稳定边界接入，核心模型不绑定单一供应商。
+- 重大变更具有迁移和回退路径，或具有经明确批准的 forward-recovery 方案；例外具有获批 RFC/ADR。
 
-- [ ] **Step 6: Update constraints and quality attributes**
+- [ ] **步骤 6：更新约束和质量属性**
 
-Keep the existing RFC/ADR and accepted-document constraints. Add constraints that delivery speed cannot bypass higher-priority principles, domains cannot directly write other domains' storage, and external product semantics cannot leak into the core model.
+保留既有 RFC/ADR 与 `accepted` 文档约束。增加以下约束：交付速度不得绕过更高优先级的适用约束；领域不得直接写入其他领域的数据存储；外部产品语义不得泄漏到核心模型。
 
-Define quality expectations for security, correctness, reliability, operability, compatibility, and evolvability without technical parameters, vendor choices, service counts, database splits, deployment topology, or numeric SLOs.
+定义安全性、正确性、可靠性、可运维性、兼容性和可演进性质量要求，不写技术参数、供应商选择、服务数量、数据库拆分、部署拓扑或数值化 SLO。
 
-- [ ] **Step 7: Run focused verification**
+- [ ] **步骤 7：运行聚焦验证（GREEN）**
 
-Run from the worktree root before committing:
+提交前从 worktree 根目录运行：
 
 ```powershell
 $ErrorActionPreference = 'Stop'
@@ -204,6 +209,18 @@ $required = @(
   '### Review and Evidence',
   '### Exception Governance',
   '### Success Criteria',
+  '只有满足所有适用的更高优先级约束的候选方案',
+  '受控读模型必须声明所有者',
+  '不得以受控读模型名义直接读取其他领域的私有存储',
+  '所有可运行组件必须暴露健康和依赖信号',
+  '只有承担处理、复制或同步职责的组件',
+  '按交互类型定义适用的失败语义',
+  '可重试操作及其处理必须幂等',
+  '各类交互必须识别并定义实际适用的失败语义',
+  '违反任何适用原则默认阻断',
+  '不可逆点、备份/恢复或 forward-recovery 方案',
+  'forward-recovery',
+  'RFC 接受后必须关联 `accepted` ADR',
   'RFC/ADR'
 )
 foreach ($value in $required) {
@@ -232,15 +249,15 @@ if ($LASTEXITCODE -ne 0) { throw 'git diff --check failed' }
 'PASS: architecture principles content'
 ```
 
-Expected output: `PASS: architecture principles content`.
+预期输出：`PASS: architecture principles content`。
 
-- [ ] **Step 8: Review scope and commit**
+- [ ] **步骤 8：审查范围并提交**
 
-Review the complete diff and confirm it contains no vendor choice, service list, API shape, event field, database split, deployment topology, or numeric SLO. Then commit:
+审查完整差异，确认没有供应商选择、服务清单、API shape、event 字段、数据库拆分、部署拓扑或数值化 SLO。随后提交：
 
 ```powershell
 git add docs/principles/architecture-principles.md
 git commit -m "docs: define architecture principles"
 ```
 
-After committing, require `git diff-tree --no-commit-id --name-only -r HEAD` to contain only `docs/principles/architecture-principles.md`, and require `git status --porcelain` to be empty.
+提交后，要求 `git diff-tree --no-commit-id --name-only -r HEAD` 只包含 `docs/principles/architecture-principles.md`，并要求 `git status --porcelain` 输出为空。
