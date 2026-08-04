@@ -13,7 +13,7 @@ adr: []
 
 # <服务设计标题>
 
-> 生成门槛：仅可基于已 `accepted` 的平台/架构文档和领域文档编写本设计；每一份平台/架构和领域来源文档都必须为 `accepted`。
+> 生成门槛：服务设计有效之前，`platform_documents` 必须至少包含一个已 `accepted` 的平台/架构权威文档稳定 ID，`domain_documents` 必须至少包含一个已 `accepted` 的领域权威文档稳定 ID；两个列表均不得为空。每一份被引用的来源文档都必须持续保持 `accepted`。
 >
 > 服务设计是派生的实现输入，不是权威文档生命周期，也不创建新的权威来源。YAML 中的 `platform_documents`、`domain_documents`、`rfc` 和 `adr` 仅填写 ID 或编号；相对链接应放在 References 中。
 
