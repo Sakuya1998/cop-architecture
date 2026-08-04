@@ -11,7 +11,7 @@ Issue or design need → RFC → Review → ADR → Update authoritative documen
 架构变化先创建或更新 RFC。评审完成并获得维护者批准后，创建或关联 ADR，再更新受影响的权威文档，最后才能创建实现任务。
 
 ## Document Status Changes
-文档状态使用 `draft`、`review` 和 `accepted`。任何贡献者均不得在没有明确维护者批准的情况下将文档标记为 `accepted`。状态变化应在文档和相关索引中同步反映。
+权威文档生命周期为 `draft → review → accepted → deprecated`。RFC 生命周期为 `draft → review → accepted/rejected → superseded`。ADR 生命周期为 `proposed → accepted → deprecated/superseded`。任何贡献者均不得在没有明确维护者批准的情况下将任何文档转换为 `accepted`。状态变化应在文档和相关索引中同步反映。
 
 ## Link and Index Updates
 新增、移动、弃用或替代文档时，更新所属目录索引、入站相对链接和引用该文档的导航页。保留稳定文档 ID；被替代的文档应链接到其替代项或 ADR。
