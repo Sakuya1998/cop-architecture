@@ -117,7 +117,7 @@ Credentials 只以 controlled reference 使用，Secret/KMS 产品后续定义�
 
 ### Trust, Network, and Failure Boundaries
 
-- Managed-environment component 主动向 central management plane 建立 encrypted outbound connection，默认不要求 inbound connection。
+- Managed-environment component 主动向 central management plane 建立 encrypted outbound connection，默认不开放从 central management plane 到受管环境的 inbound connection。
 - 每个 external platform 使用独立 identity、least privilege 和 auditable credential reference；不因网络位置而互信。
 - 每个请求和交互显式包含 org、tenant 与 resource ownership context，default deny。
 - External identity claim 必须先验证并映射 tenant/role，之后才能作出授权决定。
@@ -132,7 +132,7 @@ Credentials 只以 controlled reference 使用，Secret/KMS 产品后续定义�
 - 可识别 COP 系统边界、三类用户及所有外部系统和受管工作负载。
 - 每项交互都能判断 initiator、data direction 和 ownership。
 - 各领域的外部权威来源明确，COP 的派生上下文不会成为新的权威。
-- 不存在默认 inbound；tenant、identity、credential、network 和 data boundary 均显式定义。
+- 默认不开放从 central management plane 到受管环境的 inbound connection；tenant、identity、credential、network 和 data boundary 均显式定义。
 - 连接 freshness、error 和 retry 可观察，且单一依赖失败能够隔离。
 - 新增外部适配不改变 core semantics、统一资源身份或领域模型。
 
