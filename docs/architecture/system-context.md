@@ -96,7 +96,7 @@ flowchart LR
 | 云厂商 API | COP 仅发现、读取和同步云资源及状态 | 维护统一身份、目录、关系、来源和同步状态 | 保留资源实际执行、最终状态、供应商产品语义和调度 |
 | Kubernetes API | COP 仅发现、读取和同步集群资源及状态 | 维护统一身份、目录、关系、来源和同步状态 | 保留资源实际执行、最终状态、Kubernetes 产品语义和调度 |
 | 外部身份提供方 | COP 发起认证请求或联邦跳转并接收声明 | 验证声明，维护 org/tenant membership、role mapping、authorization decision 与 audit | 保留认证、身份 lifecycle 和 claims |
-| Telemetry 平台 | COP 按资源上下文查询并接收运营信号或结果 | 维护接入配置、资源关联、查询上下文、同步状态及必要派生状态 | 保留原始指标、日志、追踪、query execution 和 capacity |
+| Telemetry 平台 | COP 按资源上下文查询并接收运营信号或结果 | 维护接入配置、资源关联、查询上下文、同步状态及必要派生状态，包括携带来源和新鲜度的外部 Alert 评估结果用户可见投影 | 保留原始指标、日志、追踪、Alert evaluation result、query execution、data calculation、execution semantics 和 capacity |
 | 通知系统 | COP 请求告警通知投递并接收投递结果 | 维护用户可见 Alert definition、resource correlation、notification policy、target reference、request status 与 audit | 负责渠道适配和最终投递 |
 | 对象存储 | COP 可选地用于备份、导入导出和大对象归档 | 管理用途、引用、保留意图和业务 lifecycle | 保留持久化、availability 和 storage implementation |
 | 业务工作负载 | 在云、Kubernetes 和 Telemetry 中运行并产生信号 | 仅维护资源和运营信号上下文 | 保留构建、发布、托管、运行 lifecycle |
@@ -108,7 +108,7 @@ flowchart LR
 | 资源 | stable identity、unified model、catalog、relationships、sync status | actual state、execution 和 vendor semantics |
 | 身份与访问 | org/tenant membership、role mapping、authorization decision、audit | authentication、identity lifecycle、claims |
 | Telemetry | Telemetry integration config、resource correlation、query context、必要 derived state | raw telemetry 和 query engine internals |
-| Alert | user-visible alert definitions、correlation、status、policy | Telemetry engine 的 data calculation 和 execution semantics |
+| Alert | user-visible alert definitions、correlation、带来源和新鲜度的 external evaluation result 用户可见 projection、policy | Telemetry engine 的 Alert evaluation result、data calculation 和 execution semantics |
 | 通知 | delivery request、target reference、policy context、audit | channel adaptation、final delivery、channel result |
 | 对象存储 | object purpose、reference、retention intent、business lifecycle | persistence、availability、storage implementation |
 | 业务工作负载 | 资源和运营信号上下文 | build、release、hosting、runtime lifecycle |
@@ -131,7 +131,7 @@ Credentials 只以 controlled reference 使用，Secret/KMS 产品后续定义�
 
 - 可识别 COP 系统边界、三类用户及所有外部系统和受管工作负载。
 - 每项交互都能判断 initiator、data direction 和 ownership。
-- 各领域的外部权威来源明确，COP 的派生上下文不会成为新的权威。
+- 各领域的外部权威来源明确；外部 Alert evaluation result 的用户可见 projection 携带来源和新鲜度，不成为独立权威事实，COP 的派生上下文不会成为新的权威。
 - 默认不开放从 central management plane 到受管环境的 inbound connection；tenant、identity、credential、network 和 data boundary 均显式定义。
 - 连接 freshness、error 和 retry 可观察，且单一依赖失败能够隔离。
 - 新增外部适配不改变 core semantics、统一资源身份或领域模型。
