@@ -144,4 +144,3 @@ Run `git diff --check` and confirm only `docs/vision/platform-vision.md` is modi
 git add docs/vision/platform-vision.md
 git commit -m "docs: define platform vision"
 ```
-
