@@ -29,18 +29,19 @@ State that this document applies the platform direction in `COP-VIS-001`, define
 Add `### Responsibility Boundary` with these groups:
 
 - **COP 负责:** unified resource model and identities; resource catalog and relationships; cloud-account/cluster connection configuration and credential references; discovery and sync tasks; Metadata/CMDB semantics; resource-to-telemetry/alert/IAM/audit correlation; unified queries, operational views, Dashboard, Alert, IAM, and Audit; organization, tenant, and access boundaries.
-- **COP 集成但不替代:** cloud-provider APIs, Kubernetes APIs, external identity providers, Telemetry Collectors, metric/log/trace storage, notifications, object storage, and infrastructure systems. COP may deploy or connect these components without owning their internal implementation in this document.
+- **COP 集成但不替代:** cloud-provider APIs, Kubernetes APIs, external identity providers, Telemetry Collectors, metric/log/trace storage, notifications, object storage, and infrastructure systems. COP may deploy or connect these components without owning their internal implementation.
 - **外部系统负责:** actual cloud-resource and Kubernetes-workload execution and final state; business-application build/release/hosting; cloud-provider product semantics and infrastructure implementation; observability-engine internal data organization, query execution, and capacity management.
 
 Add `### Deployment Boundary` with these rules:
 
 - Self-hosted is the primary delivery form; the adopting organization operates the management plane.
 - One management plane can connect multiple cloud accounts, Kubernetes clusters, and managed environments.
-- Managed environments contain only the minimum components needed for collection, connection, and status reporting.
+- COP deploys only the minimum components needed for collection, connection, and status reporting in managed environments.
 - Identity, credential, network, and data-transfer boundaries must be explicit.
-- Business workloads do not need to move into the COP cluster.
+- Business workloads do not need to move into the COP management plane.
 - Organization, tenant, membership, resource ownership, and access context remain explicit for future SaaS.
 - Data models and APIs cannot assume one global organization or tenant.
+- Self-hosted deployments may use a single-organization mode but must not compromise future tenant isolation.
 - Current scope excludes SaaS billing, subscriptions, operator back office, customer lifecycle, and formal service-level commitments.
 
 Add `### Stage Boundary` with first-release scope:
