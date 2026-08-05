@@ -79,7 +79,7 @@ flowchart TB
   CROSS -.-> DATA_SERVICES
 ```
 
-节点表示逻辑责任，不是服务或进程。实线表示同步 Contract 或逻辑依赖；虚线表示异步意图/事实或跨切面约束。External Adapter Boundary 仅强调 Data Plane 与 cloud、Kubernetes、Telemetry 执行集成；identity provider、notification 和 object storage 不被强制经过 Data Plane，而分别由 IAM、Alert/Notification 或拥有相应 Contract 的 Platform Data Services 对接。COP-ARCH-001 仍是完整外部系统的权威来源。
+节点表示逻辑责任，不是服务或进程。实线表示同步 Contract 或逻辑依赖；虚线表示异步意图/事实或跨切面约束。External Adapter Boundary 仅强调 Data Plane 与 cloud、Kubernetes、Telemetry 执行集成；External identity provider、notification system 和 object storage 不被强制路由到 Data Plane，而分别由 IAM、Alert/Notification 或拥有相应 Contract 的 Platform Data Services 对接。COP-ARCH-001 仍是完整外部系统的权威来源。
 
 ### Plane Responsibilities
 
@@ -97,7 +97,9 @@ Portal 负责交互、视图和导航。API Boundary 为 Portal 与外部客户�
 
 #### Platform Data Services
 
-拥有领域写模型、受治理读模型、cache/index 和 object reference，并且只通过 owner Contracts 访问。读模型声明 owner、source、update、freshness 和 failure 语义；derived cache/index 只是加速层，不产生新的 authority。raw Telemetry 与外部 object data 的 authority 仍在外部系统。
+平台数据服务不得成为领域写模型的 owner；领域 owner 通过 owner Contract 管理写入和不变量。
+
+承载并提供领域拥有的写模型、受治理读模型、cache/index 和 object reference；写模型仍由领域 owner 管理，平台数据服务仅能通过 owner Contract 写入或读取。读模型声明 owner、source、update、freshness 和 failure 语义；derived cache/index 只是加速层，不产生新的 authority。raw Telemetry 与外部 object data 的 authority 仍在外部系统。
 
 #### Cross-cutting Contracts
 
@@ -111,6 +113,8 @@ Future AI Capability 是可选的未来消费者，不属于 MVP 或关键路径
 
 #### Dependency Rules
 
+禁止形成循环同步依赖；禁止跨平面直接写存储。
+
 依赖以 Contract 为先并保持单向；不得形成循环同步依赖。跨平面不得直接写存储或读取私有存储。Experience 可使用受治理 Query Contracts/read models，不得访问共享数据库。Control 定义 intent，Data 执行并报告 facts；facts 不得静默改变 policy 或 desired state。
 
 #### Command Path
@@ -119,13 +123,15 @@ Future AI Capability 是可选的未来消费者，不属于 MVP 或关键路径
 
 #### Long-running Task Path
 
-Discovery、sync 和 status propagation 采用异步路径；intent 先持久化，随后返回 facts、progress、freshness、failure 和 recovery。重试必须幂等或具备 duplicate protection，并支持 checkpoint、cancellation 与 resynchronization。
+Discovery、sync 和 status propagation 采用异步路径；Control Plane 持久化已授权的 intent 及 task lifecycle，Data Plane 通过 Adapter 执行并回报 facts、progress、freshness、failure 和 recovery。重试必须幂等或具备 duplicate protection，并支持 checkpoint、cancellation 与 resynchronization。
 
 #### Query Path
 
-查询可直接使用受治理 read models，无需经过 Data Plane；必须明确 owner、source、freshness 和 failure 语义。需要实时外部数据时，通过所属 integration Contract 发起 live external query。
+查询可直接使用受治理 read models，无需经过 Data Plane；必须明确 owner、source、freshness 和 failure 语义。需要实时外部数据时，通过所属 integration Contract 发起 live external query；调用方不得直接访问 Adapter 或外部 credential。
 
 ### Data Ownership and Storage Access
+
+读模型必须明确 owner、source Contract、freshness 和 failure semantics。
 
 | Data category | Logical owner | Access and semantics |
 | --- | --- | --- |
@@ -140,7 +146,7 @@ Discovery、sync 和 status propagation 采用异步路径；intent 先持久化
 
 ### Cross-cutting Governance
 
-所有 Contract 显式携带 org/tenant/subject/resource/auth context，默认拒绝并遵循 least privilege。外部 claims 必须验证并映射 tenant/role；credential 仅以受控 references 传递，ordinary data、task 和 log 中不得出现 secrets。Audit 记录 subject、target、time、result。Platform Observability 提供健康、依赖、处理、freshness、backlog、error 和 recovery signals。跨切面能力不得建立共享可写数据库。
+所有 Contract 显式携带 org/tenant/subject/resource/auth context，默认拒绝并遵循 least privilege。外部 claims 必须验证并映射 tenant/role；credential 仅以受控 references 传递，ordinary data、task 和 log 中不得出现 secrets。Audit 记录 subject、target、time、result，并覆盖关键接入、配置、策略、授权、任务意图、执行结果和通知行为。Platform Observability 提供健康、依赖、处理、freshness、backlog、error 和 recovery signals。跨切面能力不得建立共享可写数据库。
 
 ### Failure and Degradation
 
@@ -158,6 +164,11 @@ Discovery、sync 和 status propagation 采用异步路径；intent 先持久化
 
 ## Constraints
 
+- Contract-first：所有平面交互必须通过 governed versioned Contract；不得直接访问 Adapter、外部 credential 或共享可写存储。
+- 依赖保持单向，禁止形成循环同步依赖；禁止跨平面直接写存储，领域写模型必须由领域 owner 管理并仅通过 owner Contract 写入。
+- 不存在内部隐式信任；IAM 采用 default deny 和 least privilege，外部 identity provider、notification、object storage 等外部系统保持其自身 authority。
+- 外部权威不得被 COP 复制为新的 authority；读模型必须声明 owner、source、freshness 和 failure semantics，并允许 failure isolation、checkpoint、backpressure 和 resynchronization path。
+- AI 是可选未来消费者，不进入 MVP 关键路径；接入必须经过 roadmap 与 RFC/ADR 治理。
 - 本文不得替代 COP-ARCH-001、COP-ARCH-003、COP-DOM-001 或 COP-INFRA-001 的职责边界。
 - 重大架构变更必须经过 RFC/ADR；`draft` 文档不是 `cop-platform` 的强制实现依据。
 - 不在本文决定物理部署、组件产品或具体协议参数。
