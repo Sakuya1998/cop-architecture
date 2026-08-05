@@ -42,7 +42,7 @@ COP 包含自行部署的中央管理面及受管环境中的最小采集、连�
 
 ```mermaid
 flowchart LR
-  subgraph People["People"]
+  subgraph People["用户"]
     PE["平台工程"]
     SRE["SRE 与运维"]
     GOV["安全、审计与管理"]
@@ -74,9 +74,9 @@ flowchart LR
   COP -->|请求告警通知投递| NOTIFY
   NOTIFY -->|返回投递结果| COP
   COP <--> |可选备份、导入导出与归档| OBJECT
-  WORKLOAD -->|运行、依赖与产生信号| CLOUD
-  WORKLOAD -->|运行、依赖与产生信号| K8S
-  WORKLOAD -->|产生运行信号| TELEMETRY
+  WORKLOAD -.->|运行于或依赖| CLOUD
+  WORKLOAD -.->|运行于| K8S
+  WORKLOAD -->|产生运营信号| TELEMETRY
 ```
 
 图中的 COP 节点代表完整系统而非单一进程。COP 不控制业务工作负载生命周期；工作负载只通过云、Kubernetes 和 Telemetry 形成运行、依赖或信号关系。
