@@ -97,9 +97,7 @@ Portal 负责交互、视图和导航。API Boundary 为 Portal 与外部客户�
 
 #### Platform Data Services
 
-平台数据服务不得成为领域写模型的 owner；领域 owner 通过 owner Contract 管理写入和不变量。
-
-承载并提供领域拥有的写模型、受治理读模型、cache/index 和 object reference；写模型仍由领域 owner 管理，平台数据服务仅能通过 owner Contract 写入或读取。读模型声明 owner、source、update、freshness 和 failure 语义；derived cache/index 只是加速层，不产生新的 authority。raw Telemetry 与外部 object data 的 authority 仍在外部系统。
+承载并提供领域拥有的写模型、受治理读模型、cache/index 和 object reference；平台数据服务不得成为领域写模型的 owner，写模型仍由领域 owner 管理，仅通过 owner Contract 写入或读取。读模型声明 owner、source、update、freshness 和 failure 语义；derived cache/index 只是加速层，不产生新的 authority。raw Telemetry 与外部 object data 的 authority 仍在外部系统。
 
 #### Cross-cutting Contracts
 
@@ -113,9 +111,7 @@ Future AI Capability 是可选的未来消费者，不属于 MVP 或关键路径
 
 #### Dependency Rules
 
-禁止形成循环同步依赖；禁止跨平面直接写存储。
-
-依赖以 Contract 为先并保持单向；不得形成循环同步依赖。跨平面不得直接写存储或读取私有存储。Experience 可使用受治理 Query Contracts/read models，不得访问共享数据库。Control 定义 intent，Data 执行并报告 facts；facts 不得静默改变 policy 或 desired state。
+依赖以 Contract 为先并保持单向，禁止形成循环同步依赖；禁止跨平面直接写存储或读取私有存储。Experience 可使用受治理 Query Contracts/read models，不得访问共享数据库。Control 定义 intent，Data 执行并报告 facts；facts 不得静默改变 policy 或 desired state。
 
 #### Command Path
 
