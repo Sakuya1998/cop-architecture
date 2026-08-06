@@ -41,7 +41,7 @@ adr: []
 
 ## Context
 
-COP-ARCH-002 定义逻辑归属与读模型原则；COP-ARCH-003 的技术平面不替代业务有界上下文；COP-ARCH-004 定义交互语义；COP-DOM-002 至 COP-DOM-006 分别拥有其内部模型。外部权威保持不变：Cloud Provider/Kubernetes 拥有实际资源状态，Telemetry Backend 拥有原始 Metrics/Logs，External Identity Provider 拥有认证事实。
+COP-ARCH-002 定义逻辑归属与读模型原则；COP-ARCH-003 的技术平面不替代业务有界上下文；COP-ARCH-004 定义交互语义；COP-DOM-002 至 COP-DOM-006 分别拥有其内部模型。外部权威保持不变：Cloud Provider/Kubernetes 拥有实际资源状态；Telemetry Backend 保留原始 Metrics 和 Logs 权威；External Identity Provider 保留外部认证事实权威。
 
 ## Ubiquitous Language
 
@@ -53,7 +53,7 @@ COP-ARCH-002 定义逻辑归属与读模型原则；COP-ARCH-003 的技术平面
 - **Resource Context**：Resource Metadata 对外发布的受治理资源上下文。
 - **Telemetry**：由外部 Telemetry Backend 保存的原始 Metrics 或 Logs。
 - **Signal**：可查询、可关联且可作为告警评估输入的遥测信号。
-- **Alert**：Alerting 管理的告警规则、求值结果、告警实例与状态流转。
+- **Alert**：Alerting 根据规则和评估事实管理的告警实例及其生命周期。
 - **Principal**：在 IAM 中被识别并参与授权判定的用户或工作负载主体。
 - **Organization**：IAM 中表达组织结构与归属关系的管理边界，不替代 Tenant 的隔离边界。
 - **Tenant**：身份、数据、授权、事件和投影的隔离范围。
@@ -74,14 +74,14 @@ COP-ARCH-002 定义逻辑归属与读模型原则；COP-ARCH-003 的技术平面
 | Generic | IAM | 提供通用主体、组织、Tenant、角色和授权能力。 |
 | Experience | Dashboard | 组合受治理读模型以提供体验，不形成独立 Core 领域。 |
 
-分类体现投入和建模重点，而非安全、部署或运行时优先级。IAM 始终是独立拥有者；Dashboard 不是独立 Core 领域。
+分类体现投入和建模重点，而非安全、部署或运行时优先级。IAM 始终是独立拥有者；Dashboard 是 Experience 能力，不建立独立核心领域。
 
 ### Context Ownership
 
 - IAM 拥有 Principal、Organization、Tenant、Role、授权意图和授权决策；消费者使用稳定引用或决策结果，不复制 IAM 写模型；External Identity Provider 保留外部认证事实的权威。
 - Resource Metadata 拥有 COP Resource Identity、规范化元数据和关系；负责解析、合并和去重 Resource Observation；Cloud Provider/Kubernetes 保留实际状态的权威。
-- Cloud Access 拥有账户接入、受控凭据引用、Provider、发现和同步生命周期；产生 Resource Observation；不创建统一身份，也不写入 Resource Metadata 的私有存储。
-- Observability 拥有 Telemetry Source、Signal Binding、统一查询语义和资源关联；使用 Resource Context；不拥有 Resource 主数据或 Alert 生命周期；Telemetry Backend 保留原始 Telemetry 数据。
+- Cloud Access 拥有账户接入、受控凭据引用、Provider、发现和同步生命周期；产生 Resource Observation；不创建统一 Resource Identity，也不写入 Resource Metadata 的私有存储。
+- Observability 拥有 Telemetry Source、Signal Binding、统一查询语义和资源关联；使用 Resource Context；不拥有 Resource 主数据或 Alert 生命周期；不反向拥有 Resource 或原始 Telemetry；Telemetry Backend 保留原始 Metrics 和 Logs 权威。
 - Alerting 拥有 alert rules、evaluation results、alert instances、state transitions 和 notification orchestration；消费 Resource Context、Signal Context 及 evaluation facts；不拥有 Resource 或原始 Telemetry。Observability 提供的 evaluation facts 仅指已提交、不可变的 Signal 输入事实，不包含告警规则求值结果；规则求值、evaluation outcome 和 alert state transitions 只由 Alerting 产生和拥有。
 - Dashboard/Experience 组合受治理的 Resource、Telemetry 和 Alert 读模型；不创建核心事实，不拥有上游写模型，也不是直接跨域写入入口。
 
@@ -127,20 +127,20 @@ flowchart LR
 
 - 命令提交、授权判定、资源详情和交互式查询使用 owner 提供的同步 Contract。
 - 长任务的同步 Contract 只接受或拒绝意图并返回稳定 operation/task ID；accepted 不等于 completed，最终结果通过任务状态或异步事实传播。
-- 已提交事实通过异步 Domain Event 传播，且不携带跨域事务。
+- 已提交事实的传播使用异步 Domain Events，且不携带跨域事务。
 - 拥有者定义请求、响应、权限、冲突、超时与不可用语义。
-- 不允许绕过拥有者直接写入；禁止共享数据库、私有存储直接写入、last-write-wins、共同所有权与隐式双向写入。
+- 不允许绕过拥有者直接写入；禁止共享数据库、跨领域直接写私有存储、last-write-wins、共同所有权与隐式双向写入。
 - 需要实时授权或强一致性的受保护命令，在无法确认时 fail closed。
 - 查询不得将 timeout、unknown、partial 或 stale 伪装为完整成功。
 
 ### Projection Consistency
 
-- 每个 Projection 声明拥有者、来源、as_of、freshness 和失败语义。
+- 每个 Projection 声明拥有者、来源、`as_of`、freshness 和 failure semantics。
 - 普通读取可在明确标记时返回 stale、partial 或 degraded。
 - Dashboard 展示每个来源的时间边界，且不伪造全局快照。
-- Domain Event 描述已提交事实；事件包含 tenant_id、aggregate_id、aggregate_type、version、occurred_at、schema version，以及适用的 correlation、causation、audit。
-- 消费者必须幂等，并检测重复、乱序、replay 与不可恢复的 schema 不兼容。
-- 采用 at-least-once；不承诺 exactly-once 或全局顺序。
+- Domain Event 描述已提交事实；事件包含 `tenant_id`、`aggregate_id`、`aggregate_type`、`version`、`occurred_at` 和 schema version，以及适用的 correlation、causation、audit。
+- 消费者必须幂等，并检测 duplicate、out-of-order、replay 和不可恢复的 schema incompatibility。
+- 采用 at-least-once；不依赖 exactly-once 或全局排序。
 
 ### Failure Isolation and Recovery
 
@@ -149,21 +149,21 @@ flowchart LR
 - Telemetry Backend 故障时，Resource 和 Alert 写入继续运行，查询明确报告 unavailable 或 partial。
 - Alerting 记录 evaluation failure，而非将其记为正常结果。
 - IAM 不可用时，受保护命令和敏感查询 fail closed。
-- 使用有限重试、隔离和可观察的人工恢复，不在网络分区上无限阻塞。
+- 事件消费失败使用有限重试、隔离和可观测的人工恢复流程；禁止无限重试持续阻塞同一消费分区。
 - Projection 可从保留的 Domain Event 重建；reconciliation 检测缺失引用、版本缺口和长期 stale。
 
 单个 Provider、Telemetry Backend、IAM 依赖、消费者或 Projection 的故障不会改变另一拥有者；恢复过程保留 tenant、correlation、causation 与 audit。
 
 ### Validation Strategy
 
-- **Ownership**：验证每个核心事实恰有一个拥有者，消费者不写入其私有存储。
-- **Contract**：验证同步 Contract 明确请求、响应、权限、冲突、超时与不可用语义；长任务返回稳定 operation/task ID，并区分 accepted 与 completed。
-- **Event compatibility**：验证事件 schema version 可被兼容消费者处理，无法兼容时可观测且隔离。
-- **Tenant isolation**：验证 tenant_id、身份、授权和作用域阻止跨 Tenant 的读取、写入与 Projection 泄漏。
-- **Freshness**：验证 Projection 输出拥有者、来源、as_of、freshness，并显式标记 stale、partial 或 degraded。
-- **Failure isolation**：验证任一外部依赖、消费者或 Projection 失败不改变其他拥有者的写模型或事实归属。
-- **Traceability**：验证同步跨域调用和事件传播都保留 correlation、audit，以及适用的 causation context。
-- **Reconciliation**：验证可发现缺失引用、版本缺口、重复、乱序、replay 和长期 stale，并从保留事件重建 Projection。
+- **Ownership：** 验证每个核心事实恰有一个拥有者，消费者不写入其私有存储。
+- **Contract：** 验证同步 Contract 明确请求、响应、权限、冲突、超时与不可用语义；长任务返回稳定 operation/task ID，并区分 accepted 与 completed。
+- **Event compatibility：** 验证事件 schema version 可被兼容消费者处理，无法兼容时可观测且隔离。
+- **Tenant isolation：** 验证 tenant_id、身份、授权和作用域阻止跨 Tenant 的读取、写入与 Projection 泄漏。
+- **Freshness：** 验证 Projection 输出拥有者、来源、`as_of`、freshness，并显式标记 stale、partial 或 degraded。
+- **Failure isolation：** 验证任一外部依赖、消费者或 Projection 失败不改变其他拥有者的写模型或事实归属。
+- **Traceability：** 验证同步跨域调用和事件传播都保留 correlation、audit，以及适用的 causation context。
+- **Reconciliation：** 验证可发现缺失引用、版本缺口、duplicate、out-of-order、replay 和长期 stale，并从保留事件重建 Projection。
 
 ### Success Criteria
 
