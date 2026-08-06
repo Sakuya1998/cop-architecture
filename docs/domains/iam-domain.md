@@ -56,7 +56,7 @@ adr: []
 
 ### IAM Responsibility Boundary
 
-External Identity Provider 保留 authentication、identity lifecycle 和 claims 权威。IAM 拥有稳定内部 `Principal`、`Identity Link`、`Organization`、`Tenant`、Organization Membership、Tenant Membership、`Permission Catalog`、内置 `Role Definition`、`Role Assignment`、`Authorization Decision` 和 `Temporary Platform Elevation`。IAM 不保存密码、token、完整 claims 或原始 Secret；Principal Profile 仅保留最小 display name、受验证 contact reference、identity source、`last_synced_at` 和必要状态。
+External Identity Provider 保留认证、identity lifecycle 和 claims 权威。IAM 维护稳定内部 `Principal`，并拥有 `Identity Link`、`Organization`、`Tenant`、Organization Membership、Tenant Membership、`Permission Catalog`、内置 `Role Definition`、`Role Assignment`、`Authorization Decision` 和 `Temporary Platform Elevation`。IAM 不保存密码、token、完整 claims 或原始 Secret；Principal Profile 仅保留最小 display name、受验证 contact reference、identity source、`last_synced_at` 和必要状态。
 
 各业务领域 owner 定义本领域 Permission 的 `action/resource` 语义并发布版本化 reference；IAM 只治理 Permission Catalog、内置 Role、Assignment 和授权判定，不复制业务语义。
 
@@ -146,7 +146,7 @@ flowchart LR
 
 下表为单一 ownership 表；引用不表示跨聚合共享存储或隐式授权继承。
 
-| Aggregate or capability | Single ownership | Boundary and key references |
+| Aggregate or capability | Ownership | Key references and boundaries |
 | --- | --- | --- |
 | Principal | 稳定内部主体、类型、状态和最小 Profile | Identity Link、Organization/Tenant Membership 引用；不拥有外部认证事实 |
 | Identity Link | Principal 与已验证外部身份或 workload identity 的关联 | issuer、subject、source、sync metadata；不保存 token 或完整 claims |
@@ -160,7 +160,15 @@ flowchart LR
 | Authorization Decision | 带 ID、理由、版本和有效期的 allow/deny 结果 | 短期结果和审计关联，不成为长期聚合 |
 | Temporary Platform Elevation | 跨 Tenant 恢复或治理的短期授权意图 | target Tenant、reason、scope、expiry、强审计 |
 
-生命周期状态如下：Principal 为 `Active`、`Suspended`、`Disabled`；Organization Membership 与 Tenant Membership 为 `Invited`、`Active`、`Suspended`、`Removed`；Role Assignment 与 Temporary Platform Elevation 为 `Active`、`Revoked`、`Expired`。Removed、Revoked、Expired 记录保留审计链；重新加入或授予时创建新记录，不复用历史授权记录。父级 Principal 或 Organization Membership 暂停、禁用后，下游记录保留但授权立即无效。活动 Tenant 至少保留一个有效的内置 Tenant Administrator Assignment。
+生命周期状态如下：
+
+- Principal：`Active`、`Suspended`、`Disabled`。
+- Organization Membership：`Invited`、`Active`、`Suspended`、`Removed`。
+- Tenant Membership：`Invited`、`Active`、`Suspended`、`Removed`。
+- Role Assignment：`Active`、`Revoked`、`Expired`。
+- Temporary Platform Elevation：`Active`、`Revoked`、`Expired`。
+
+Removed、Revoked、Expired 记录保留审计链；重新加入或授予时创建新记录，不复用历史授权记录。父级 Principal 或 Organization Membership 暂停、禁用后，下游记录保留但授权立即无效。活动 Tenant 至少保留一个有效的内置 Tenant Administrator Assignment。
 
 ## Commands and Queries
 
@@ -186,6 +194,8 @@ flowchart LR
 查询必须应用调用者授权和 Tenant isolation，不得泄漏未经授权的数据存在性、Profile、Membership 或 Assignment。
 
 ## Domain Events
+
+### Events
 
 事件包括 Principal 注册、身份关联与状态变化，Organization/Tenant 创建与状态变化，Organization/Tenant Membership 生命周期变化，Permission Catalog 或 Role Definition 版本变化，Role Assignment 创建/撤销/过期，以及 Temporary Platform Elevation 创建/撤销/过期。
 
