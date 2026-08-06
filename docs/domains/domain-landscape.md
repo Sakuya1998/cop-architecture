@@ -79,7 +79,7 @@ classification is investment and modeling focus，而非安全、部署或运行
 - Resource Metadata 拥有 COP Resource Identity、normalized metadata 和 relationships；负责 resolves/merges/deduplicates observations；providers/Kubernetes 保留 actual-state authority。
 - Cloud Access 拥有 account onboarding、controlled credential references、Provider、discovery 和 sync lifecycle；产生 Resource Observations；不创建 unified identity，也不写入 Resource Metadata private storage。
 - Observability 拥有 Telemetry Source、Signal Binding、common query semantics 和 resource association；使用 Resource Context；不拥有 Resource master 或 Alert lifecycle；Telemetry Backend 拥有 raw data。
-- Alerting 拥有 rules、evaluation results、alert instances、lifecycle 和 notification orchestration；消费 Resource/Signal Context 及 evaluation facts；不拥有 Resource/raw Telemetry。
+- Alerting 拥有 alert rules、evaluation results、alert instances、state transitions 和 notification orchestration；消费 Resource/Signal Context 及 evaluation facts；不拥有 Resource/raw Telemetry。
 - Dashboard/Experience 组合 governed Resource/Telemetry/Alert read models；不创建 core facts，不拥有 upstream write model，也不是 a direct cross-domain write entry。
 
 ### Domain Relationship Map
