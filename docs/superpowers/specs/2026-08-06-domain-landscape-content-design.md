@@ -136,11 +136,11 @@ flowchart LR
 
 - Cloud Access 发现失败时保留最近一次同步游标和已确认结果，不删除无法重新确认的资源。
 - Resource Metadata 无法解析 observation 时隔离输入，不生成不完整的统一身份。
-- Observability Backend 不可用时，资源和告警写模型继续运行；Telemetry 查询返回 unavailable 或 partial。
+- Telemetry Backend 不可用时，资源和告警写模型继续运行；Telemetry 查询返回 unavailable 或 partial。
 - Alerting 无法取得必要信号时记录 evaluation failure，不把未知状态转换为正常状态。
 - IAM 无法完成实时授权判定时，受保护命令和敏感查询 fail closed。
 - 事件消费失败使用有限重试、隔离和可观测的人工恢复流程；禁止无限重试持续阻塞同一消费分区。
-- 投影支持按授权事件重建，并通过 reconciliation 检测引用缺失、版本间隙和长期陈旧数据。
+- 投影支持按保留的领域事件重建，并通过 reconciliation 检测引用缺失、版本间隙和长期陈旧数据。
 
 单一 Provider、Telemetry Backend、IAM dependency、消费者或投影故障不得修改其他领域的写模型所有权。恢复流程必须保留 tenant、correlation、causation 和 audit 信息。
 
