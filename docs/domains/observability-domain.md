@@ -2,10 +2,10 @@
 id: COP-DOM-005
 title: COP Observability Domain
 status: draft
-version: 0.1.0
+version: 0.2.0
 owners:
   - architecture
-last_updated: 2026-08-03
+last_updated: 2026-08-07
 related:
   - COP-DOM-001
   - COP-DOM-003
@@ -19,50 +19,122 @@ adr: []
 
 ## Purpose
 
-定义遥测接入、信号类型、查询边界和资源关联。
+定义受管环境的遥测来源、信号、查询、结果完整性和供告警评估使用的不可变输入事实；将其与原始 Telemetry Backend、资源元数据、身份授权和告警生命周期明确分离。
 
 ## Scope
 
-- Metrics
-- Logs
-- Traces
-- OTel
-- 查询
-- 资源关联
+- 管理 Telemetry Source、Telemetry Capability、Signal Definition、Signal Binding、Query Intent、Query Job、result completeness 和 Evaluation Input。
+- 以 versioned Telemetry Adapter Contract 接入 Metric、Log、Trace、OpenTelemetry（OTel）以及查询能力。
+- 对跨 Source 的联邦查询、受控同步查询、异步查询和 Evaluation Input 提供可审计的语义。
 
 ## Non-goals
 
-- 存储引擎内部实现
-- Dashboard 布局
-- 告警规则状态机
+- 不拥有 Telemetry Backend 的原始 Metrics、Logs、Traces、查询引擎内部实现或其存储。
+- 不拥有 IAM 的 Principal、Tenant 或认证授权决策，不保存 Secret/KMS credential material。
+- 不拥有 Resource Metadata 的 Resource Identity、Resource Context，也不创建 Resource Identity。
+- 不拥有 Alerting 的规则评估、outcome 或 Alert lifecycle，亦不定义 Infrastructure Collector、Backend 或 Platform Observability runtime。
 
 ## Context
 
-本文是 COP 架构文档体系初始化产生的 `draft` 文档。详细设计必须经过专项讨论和评审；在状态变为 `accepted` 前，不得作为 `cop-platform` 的强制实现依据。
+COP-DOM-005 是 `draft`，用于在 RFC 评审完成前描述可观测领域的候选边界；它不是 `cop-platform` 的强制实现依据。受管环境的 Observability 与 Platform Observability 分离：前者管理外部受管环境的遥测接入和受控结果，后者是 Infrastructure 对 COP 自身运行时的观测职责。
 
 ## Ubiquitous Language
 
-本领域的正式术语将在领域评审中定义，并与 `COP-STD-001` 保持一致。
+Telemetry Source 是租户下指向一个 Backend identity 的稳定接入标识。Telemetry Capability 是某一 versioned Adapter Contract 所声明的可用能力。Signal Definition 定义稳定的 `signal_id`、Metric/Log/Trace 类型、语义、单位、允许的 dimensions 和 sensitivity。Signal Binding 将 Source 的 backend selector 映射至 Signal Definition 和 Resource Context。Query Intent 是不可变的查询意图；Query Job 是其可取消、分页和审计的执行实例。result completeness 表示每个 Source/Signal/Resource/window 的 Complete、Partial、Stale 或 Unavailable 状态。Evaluation Input 是已提交的、供 Alerting 消费的不可变信号输入事实。
 
 ## Bounded Context
 
-当前尚未形成已接受的边界上下文设计。
+### Observability Responsibility Boundary
+
+Observability 独立拥有 Telemetry Source、Telemetry Capability、Signal Definition、Signal Binding、Query Intent、Query Job、result completeness 和 Evaluation Input。IAM 拥有 Principal、Tenant 与认证授权决策；Secret/KMS 拥有 credential material；Resource Metadata 拥有 Resource Identity 与 Resource Context；Telemetry Backend 拥有原始 Metrics、Logs、Traces 及 query-engine internals；Alerting 拥有 rule evaluation、outcome 与 Alert lifecycle；Infrastructure 拥有 Collector、Backend 与 Platform Observability runtime。领域之间不得共享可写存储，亦不得跨领域写入私有数据。
+
+### Telemetry Source and Capability Model
+
+`source_id` 不可变，且只对应一个 Tenant 和一个 Backend identity。Source 持有 config、Credential Reference 与 Capability 的版本引用，但绝不保存 credential material。Tenant 或 Backend identity 变化必须创建新的 Source；endpoint、routing 或 credential reference 变化创建新版本。状态只能为 Pending、Validating、Active、Degraded、Suspended、Revoked；Revoked 为终态，且 ID 不得复用。新执行使用当前有效版本，既有 Job 固定其已引用的旧版本。
+
+Telemetry Capability 由 versioned Telemetry Adapter Contract 声明，覆盖支持的 Signal types、OTel ingest、queries、time ranges、pagination/streaming、aggregation 与 correlation。每次查询固定 Capability/Contract version，运行时不得自动切换。
+
+### Signal Definition and Binding Model
+
+Signal Definition 的 `signal_id` 稳定且版本化，类型仅为 Metric、Log 或 Trace，并定义 semantics、unit、allowed dimensions 与 sensitivity。Signal Binding 的版本把 Source backend selector 映射至 Signal Definition 和 Resource Context；backend names、selectors 和 query language 始终封装在 Adapter 中。未解析、歧义、跨 Tenant、schema-incompatible 或 sensitivity-conflicting 的映射必须进入 Unresolved 或 Quarantined，且绝不创建 Resource Identity。OpenTelemetry 是 Contract，不是实体。
+
+### Query Intent and Execution Model
+
+Query Intent 不可变，明确 Signal、Resource/Source scope、time window、filter、aggregation、completeness、result limits 与 execution mode。小且有界的查询可受控同步执行；cross-Source、long-window、export 及 Evaluation Input 必须使用可取消、可分页、可审计的 Query Job。Job 固定 Intent、Source/config、Signal、Binding、Resource Context、Capability/Contract 和 auth context。Job 状态只能为 Queued、Dispatched、Running、Succeeded、Failed、Cancelled、Expired；Succeeded 不表示 complete。
+
+### Result Completeness and Evaluation Input Model
+
+每个 Source/Signal/Resource/window 的结果状态为 Complete、Partial、Stale 或 Unavailable；不得把缺失强制为 zero、latest、empty 或 no-data。联邦查询不保证全局一致 snapshot。projection、cache、index summary 必须声明 owner、source、as_of、freshness、retention、completeness 和 rebuildability，且永不成为 raw telemetry authority。
+
+Evaluation Input 是已提交的不可变 Signal input fact，包含 query/job、source/config、signal、binding、resource、window、contract references、provenance、completeness、content hash、idempotency 与 correlation。它不包含 rule、threshold、outcome 或 Alert state；Alerting 必须把不完整输入视为 evaluation failure。发布语义为 at-least-once，消费者以 event ID、aggregate version 及 Job/Input idempotency key 处理 duplicate、out-of-order 和 replay。
+
+### Observability Relationship Map
+
+```mermaid
+flowchart LR
+  IAM[IAM] -.->|authorization / credential reference| CP[Control Plane]
+  RM[RM] -->|Resource Context| CP
+  CP -->|versioned Source / Binding / Query Intent| DP[Data Plane]
+  DP -->|OTel telemetry| TB[Telemetry Backend]
+  DP -->|federated query| TB
+  TB -->|raw query result| DP
+  DP -->|normalized result + completeness| CP
+  CP --> EI[Evaluation Input]
+  EI --> AL[Alerting]
+```
+
+箭头仅描述受控引用或消息流，不表示 shared storage、credential copying、cross-domain direct writes、distributed transactions 或 deployment topology。
+
+### Failure and Recovery
+
+按 Tenant + Source + Adapter 隔离 retry、concurrency、throttling、Circuit Breaker 和 retry budget；只对 retryable errors 使用有界 backoff/jitter。错误分类仅为 AuthenticationFailed、AuthorizationDenied、RateLimited、BackendUnavailable、InvalidQuery、InvalidScope、UnsupportedCapability、BindingUnresolved、ContractViolation；raw diagnostics 只保留受控 reference。恢复前必须重新验证所有 versions、auth 和 sensitivity。授权分两阶段执行：先验证 Source/Intent，再验证 Resource/Signal；未知状态必须 fail closed。普通 events、logs、audit 不得包含 credentials、executable tokens、raw sensitive logs/traces 或 diagnostic payload。
+
+### Validation Strategy
+
+验证必须覆盖状态迁移、expected version、Tenant 隔离、Binding 解析、Contract 固定、两阶段授权、completeness 传播、重复投递和乱序 replay。针对每个 Source/Adapter 的验证应受限于其隔离预算，并在 Capability 或 config 变更后重新执行。
+
+### Success Criteria
+
+可观测领域能以确定的版本、scope 和 completeness 产出可审计的受控查询结果与 Evaluation Input；失败不跨 Tenant、Source 或 Adapter 扩散；任何输入都不泄露秘密或把原始遥测提升为本领域权威数据。
 
 ## Aggregates and Entities
 
-当前尚未形成已接受的聚合、实体和值对象设计。
+| Aggregate or capability | Ownership | Key references and boundaries |
+| --- | --- | --- |
+| Telemetry Source | Observability | immutable source_id；Tenant、Backend identity、config/Credential Reference/Capability versions；不保存 credential material。 |
+| Telemetry Capability | Observability | versioned Telemetry Adapter Contract；不拥有 Backend internals。 |
+| Signal Definition | Observability | stable versioned signal_id、类型、语义、单位、dimensions、sensitivity。 |
+| Signal Binding | Observability | Source selector 至 Signal Definition 与 Resource Context；不创建 Resource Identity。 |
+| Query Intent | Observability | immutable scope、window、filter、aggregation、completeness、limits、mode。 |
+| Query Job | Observability | 固定 Intent、版本、auth context；执行不拥有 raw telemetry。 |
+| Evaluation Input | Observability | immutable fact、provenance、completeness、hash、idempotency、correlation；不含 Alerting state。 |
 
 ## Commands and Queries
 
-当前尚未形成已接受的命令与查询模型。
+### Commands
+
+批准的命令为 RegisterTelemetrySource、ValidateTelemetrySource、ReviseTelemetrySourceConfig、SuspendTelemetrySource、ResumeTelemetrySource、RevokeTelemetrySource；DefineSignal、ReviseSignalDefinition；CreateSignalBinding、ResolveSignalBinding、QuarantineSignalBinding、ActivateSignalBinding、SuspendSignalBinding、RevokeSignalBinding；CreateQueryIntent、ReviseQueryIntent；CreateQueryJob、DispatchQueryJob、StartQueryJob、CompleteQueryJob、FailQueryJob、CancelQueryJob、ExpireQueryJob；CommitEvaluationInput、InvalidateEvaluationInput。所有管理命令必须携带 Tenant、actor/source、idempotency key、expected version，并显式拒绝无效状态迁移与并发冲突。
+
+### Queries
+
+查询覆盖 Source、Signal、Binding、Intent、受控同步执行、Job/progress/error/completeness，以及 Evaluation Input 的 provenance/completeness/audit。必须强制 IAM/Tenant/Source/Resource/Signal/sensitivity 授权；不得返回 credentials、executable token、raw diagnostics 或未授权 payload。
 
 ## Domain Events
 
-当前尚未形成已接受的领域事件模型；未来事件必须符合 `COP-API-002`。
+### Events
+
+至少以 at-least-once 发布 Source、Signal、Binding、Job 和 Evaluation Input 生命周期事件；事件包含标准 error category 或 controlled reference，并受未来 COP-API-002 接受门禁约束。事件消费者使用 event ID、aggregate version 和 Job/Input idempotency key 去重并处理 out-of-order/replay。
+
+### Audit
+
+持续记录 actor、auth、version、scope、completeness 和 correlation。高流量 OTel/query 可批量审计，但不得隐藏 identity、scope、version、completeness 或 failure。
 
 ## Invariants
 
-当前尚未形成已接受的领域不变量。
+- 仅 Observability 写入其七类 aggregate/capability；跨领域仅通过受控引用或事件交互，不能共享 writable storage 或私有写入。
+- Source ID 与 Signal ID 稳定且不可复用；Source 的 Tenant 或 Backend identity 变更只能创建新 Source，查询执行固定全部引用版本。
+- 结果完整性是显式事实，缺失不可推断为零值、最新值、空结果或无数据；Succeeded Job 也必须保留 completeness。
+- 未知授权、Binding、Contract 或 sensitivity 状态必须 fail closed，且没有任何普通记录可携带秘密或原始敏感遥测。
 
 ## Relationships
 
@@ -73,16 +145,15 @@ adr: []
 
 ## Constraints
 
-- 不得绕过 RFC/ADR 流程引入重大架构决策。
-- 不得与相关 `accepted` 权威文档产生冲突。
+受管环境 Observability 仅协调版本化接入和受控结果，Platform Observability 仍由 Infrastructure 负责。所有确定性、失败隔离、secrecy 和 completeness 约束必须在 Source、Adapter、Query Job 与 Evaluation Input 边界执行。本文仍为 draft；任何重大演进先经 RFC，且 COP-API-002 事件契约须在其被接受后才可成为实现门禁。
 
 ## Quality Attributes
 
-后续评审必须明确与本文主题相关的安全性、可靠性、可扩展性、可运维性和兼容性要求。
+安全性要求 Tenant、Source 和 Adapter 隔离、两阶段授权和秘密零泄露；可靠性要求有界重试、Circuit Breaker、可恢复验证和 at-least-once 去重；一致性要求固定版本、确定的状态迁移及显式 completeness；可运维性要求可审计 provenance、correlation 和受控 diagnostics reference。Projection、cache 与 index summary 必须可重建并声明 freshness、retention 和 owner。
 
 ## Implementation Guidance
 
-在本文状态变为 `accepted` 前，Codex 只能使用本文理解设计范围，不得据此生成生产实现。
+在本文保持 draft 期间，不得将其作为生产实现约束。后续实现只能在相关 RFC 已接受、必要 ADR 已链接、COP-API-002 已接受且不与权威文档冲突时进行；实现必须保持领域所有权、版本确定性、completeness、失败隔离和 secrecy，并持续区分 managed-environment Observability 与 Platform Observability。
 
 ## References
 
