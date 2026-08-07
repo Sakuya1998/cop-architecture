@@ -124,8 +124,8 @@ flowchart LR
 验证以以下可判定断言覆盖 Connection identity、Tenant isolation、credential authority、Intent determinism、Grant confinement、Contract conformance、Adapter normalization、snapshot completeness、Delta semantics、idempotency/concurrency、failure isolation、traceability 与 secrecy：
 
 - 跨 Tenant 对 Connection、Binding、Intent、Job、Grant 或 Observation 的操作必须被拒绝，且不得泄漏对象存在性。
-- 扩大 Execution Grant 的 scope 或复用既有 attempt 必须被拒绝。
-- Cloud Access 的持久化、事件和日志不得包含 credential material；Credential rotation 不得改变 Connection ID；旧 Binding 保持审计可查，但不得用于新的 Job。
+- 扩大 Execution Grant 的 scope、复用既有 attempt、Grant 过期、version mismatch，或 Connection、Binding、Job status mismatch 都必须被拒绝。
+- Credential rotation 和 health state change 不得改变 `connection_id`；`Revoked` ID 不复用。Cloud Access 的持久化、事件和日志不得包含 credential material；旧 Binding 保持审计可查，但不得用于新的 Job。
 - Job 固定的 Connection、Intent、Binding、Capability/Contract version 在执行中不得漂移。
 - Provider authentication、pagination、throttle、error 和 payload 只在 Adapter 内规范化；核心模型和下游仅见标准 Contract。
 - Connector、分页或部分 scope 失败必须产生 Incomplete，且不得产生 candidate。
@@ -160,13 +160,13 @@ flowchart LR
 
 ### Queries
 
-查询提供 Connection identity/lifecycle/health/current binding，binding history（不含材料），Intent version/scope/capability，Job/attempt/Execution Grant reference、状态与非敏感审计元数据/progress/error/batch，capability/contract support，以及 Batch completeness/scope/cursor/publish state。Execution Grant 查询禁止返回可执行 token 或 credential material。所有查询应用 IAM 与 Tenant isolation，且不得泄漏未经授权对象的存在性。
+查询提供 Connection identity/lifecycle/health/current binding，binding history（不含材料），Intent version/scope/capability，Job/attempt/Execution Grant reference、状态与非敏感审计元数据/progress/error/batch，capability/contract support，以及 Batch completeness/scope/cursor/publish state。Job/Batch 查询只返回标准化 error category 或受控 error reference，不返回原始 Provider diagnostic evidence。Execution Grant 查询禁止返回可执行 token 或 credential material。所有查询应用 IAM 与 Tenant isolation，且不得泄漏未经授权对象的存在性。
 
 ## Domain Events
 
 ### Events
 
-事件覆盖 Connection 注册、验证、健康与生命周期；Binding 创建、轮换与撤销；Intent 创建、修订与状态变化；Job 与 attempt 状态；Grant 签发与失效；Batch 追加、闭合与标记 Incomplete；以及 missing candidate 的产生。采用 at-least-once 最小事件，携带 ID、Tenant、version、scope reference、status、error、time 和 correlation；不得携带原始 credential、Secret 或完整 payload。消费者必须处理 duplicate、out-of-order 与 replay。未来事件必须符合 COP-API-002；只有 COP-API-002 为 `accepted` 时才具有实现约束力。
+事件覆盖 Connection 注册、验证、健康与生命周期；Binding 创建、轮换与撤销；Intent 创建、修订与状态变化；Job 与 attempt 状态；Grant 签发与失效；Batch 追加、闭合与标记 Incomplete；以及 missing candidate 的产生。采用 at-least-once 最小事件，携带 ID、Tenant、version、scope reference、status、标准化 error category 或受控 reference、time 和 correlation；不携带 raw Provider diagnostic evidence、credential、Secret 或完整 payload。at-least-once 消费者使用 event ID、aggregate version 和 Job/Batch idempotency key 判断 duplicate、out-of-order 与 replay。未来事件必须符合 COP-API-002；只有 COP-API-002 为 `accepted` 时才具有实现约束力。
 
 ### Audit
 
