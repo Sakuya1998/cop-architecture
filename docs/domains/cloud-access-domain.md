@@ -19,7 +19,7 @@ adr: []
 
 ## Purpose
 
-定义受治理的外部云与 Kubernetes 接入边界：以 Credential Reference 绑定 Provider Capability，保存版本化 Discovery Intent，编排同步执行，并交付可追溯、可判断完整性的 Resource Observation。
+定义受治理的外部云与 Kubernetes 接入边界：以 Credential Binding 受控关联 Credential Reference，以 Provider Capability 声明发现支持范围，保存版本化 Discovery Intent，编排同步执行，并交付可追溯、可判断完整性的 Resource Observation。
 
 ## Scope
 
@@ -63,11 +63,13 @@ Cloud Access 拥有 Connection、Binding、Capability、Intent、Job、Execution
 
 Cloud Connection 使用不可变内部 `connection_id`；每个 Connection 只对应一个 Tenant、一个 Provider 和一个外部账号或集群身份。身份边界变化必须创建新的 Connection。生命周期状态仅为 `Pending`、`Validating`、`Active`、`Degraded`、`Suspended`、`Revoked`；`Revoked` 为终态且 ID 不复用，`Degraded` 表示健康而非身份。跨 Tenant 使用默认拒绝，unresolved state、身份或授权无法解析时 fail closed。
 
-Cloud Access 仅保存受控 Credential Reference 和 Credential Binding version，不保存凭据材料。Rotation 创建新的 Binding version；旧版本保持可审计，但不得用于新的 Job。已有 Job 固定其 Binding version。Revocation 或 suspension 使未使用的 Grant 失效。
+Cloud Access 仅保存受控 Credential Reference 和 Credential Binding version，不保存凭据材料。Rotation 创建新的 Binding version；旧版本保持可审计，但不得用于新的 Job。已有 Job 固定其 Binding version。Credential Reference 或 Credential Binding 的 suspension 或 revocation，以及 Connection 进入 `Suspended` 或 `Revoked`，都停止新 Job 的创建或派发，并使未使用的 Execution Grant 失效；Job 进入 `Cancelled` 或 `Expired` 也使相关执行工作和未使用的 Grant 失效。
 
 ### Discovery and Execution Model
 
 Discovery Intent 不可变且版本化，包含 scope、资源类型、触发方式和 Capability。Sync Job 固定 Connection ID、Intent version、Binding version、scope 以及 Capability/Contract version；Job 状态仅为 `Queued`、`Dispatched`、`Running`、`Succeeded`、`Failed`、`Cancelled`、`Expired`。仅 `Succeeded` 不足以建立权威 snapshot。
+
+创建 Sync Job 前，必须验证 Discovery Intent 所需 Provider Capability 位于 Adapter Contract 支持范围内；验证失败时拒绝创建或派发。Job 仅固定已验证的 Capability/Contract version，执行中不得切换版本。
 
 每次 dispatch 或 retry 产生 short-lived、non-expandable 的 Execution Grant，绑定 Tenant、Connection、Job、scope、operation、attempt 和 expiry。自动 retry 在同一 Job 上创建新的 attempt；手动 rerun 创建新的 Job。
 
@@ -75,7 +77,7 @@ Discovery Intent 不可变且版本化，包含 scope、资源类型、触发方
 
 Agentless Adapter 与 outbound-only Managed Connector 使用同一 Adapter Contract；Connector 只主动建立出站连接。Provider Capability 声明 Provider、资源发现、认证与 Contract 支持，Sync Job 固定其版本。Adapter 输入包括 Connection、Intent version、Binding reference、Grant 和 cursor；输出包括规范化 Batch、progress 和 error。
 
-Adapter 内部规范化 Provider authentication exchange、endpoint、pagination、throttling、error code、payload 和 retry hint。标准错误类别仅为 `AuthenticationFailed`、`AuthorizationDenied`、`RateLimited`、`ProviderUnavailable`、`InvalidScope`、`UnsupportedCapability`、`ContractViolation`，并携带 retryability 与 retreat hint。原始响应仅是受控诊断证据，不是下游 Contract 或日志内容。
+Adapter 内部规范化 Provider authentication exchange、endpoint、pagination、throttling、error code、payload 和 retry hint。标准错误类别仅为 `AuthenticationFailed`、`AuthorizationDenied`、`RateLimited`、`ProviderUnavailable`、`InvalidScope`、`UnsupportedCapability`、`ContractViolation`，并携带 retryability 与 retry/backoff hint。只有明确标记为 retryable 的标准化错误允许有界自动重试；`AuthenticationFailed`、`AuthorizationDenied`、`InvalidScope`、`UnsupportedCapability`、`ContractViolation` 不自动重试。`RateLimited` 与 `ProviderUnavailable` 仅在 Adapter 标记为 retryable 且给出 retry/backoff hint 时允许有界自动重试。原始响应仅是受控诊断证据，不是下游 Contract 或日志内容。
 
 ### Observation and Completeness Model
 
@@ -151,7 +153,7 @@ flowchart LR
 
 ### Events
 
-事件覆盖 Connection lifecycle、Binding 与 Intent version、Job lifecycle 与 attempt、Grant、Batch，以及 missing-candidate。采用 at-least-once 最小事件，携带 ID、Tenant、version、scope reference、status、error、time 和 correlation；不得携带原始 credential、Secret 或完整 payload。消费者必须处理 duplicate、out-of-order 与 replay。
+事件覆盖 Connection 注册、验证、健康与生命周期；Binding 创建、轮换与撤销；Intent 创建、修订与状态变化；Job 与 attempt 状态；Grant 签发与失效；Batch 追加、闭合与标记 Incomplete；以及 missing candidate 的产生。采用 at-least-once 最小事件，携带 ID、Tenant、version、scope reference、status、error、time 和 correlation；不得携带原始 credential、Secret 或完整 payload。消费者必须处理 duplicate、out-of-order 与 replay。
 
 ### Audit
 
@@ -181,6 +183,7 @@ flowchart LR
 - 无有效 Tenant、授权、Credential Reference、Binding version、Capability/Contract、Grant 或完整性状态时拒绝执行或发布。
 - 只通过版本化 Contract 发布 Resource Observation；不共享可写存储，不直接写入其他领域私有存储。
 - 重大边界或兼容性变化必须先经 RFC/ADR；本文不决定实现产品或部署。
+- `COP-DOM-004` 保持 `draft`；未经人类显式接受，不得成为 `cop-platform` 的实现约束。
 
 ## Quality Attributes
 
