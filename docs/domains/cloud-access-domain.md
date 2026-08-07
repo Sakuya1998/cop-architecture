@@ -63,15 +63,11 @@ Cloud Access 拥有 Connection、Binding、Capability、Intent、Job、Execution
 
 Cloud Connection 使用不可变内部 `connection_id`；每个 Connection 只对应一个 Tenant、一个 Provider 和一个外部账号或集群身份。身份边界变化必须创建新的 Connection。生命周期状态仅为 `Pending`、`Validating`、`Active`、`Degraded`、`Suspended`、`Revoked`；`Revoked` 为终态且 ID 不复用，`Degraded` 表示健康而非身份。跨 Tenant 使用默认拒绝，unresolved state、身份或授权无法解析时 fail closed。
 
-`RegisterCloudConnection` 创建 `Pending`。`ValidateCloudConnection` 仅允许从 `Pending` 或 `Degraded` 进入 `Validating`，并以 `Active` 或 `Degraded` 结束。`SuspendCloudConnection` 允许任一非终态进入 `Suspended`；`ResumeCloudConnection` 仅从 `Suspended` 进入 `Validating`，重新验证 Connection、Binding、Capability 和 scope 后才进入 `Active`，否则进入 `Degraded`。`RevokeCloudConnection` 使任一非 `Revoked` 状态进入 `Revoked`，且 `Revoked` 为终态。所有非法迁移显式拒绝。
-
 Cloud Access 仅保存受控 Credential Reference 和 Credential Binding version，不保存凭据材料。Rotation 创建新的 Binding version；旧版本保持可审计，但不得用于新的 Job。已有 Job 固定其 Binding version。Credential Reference 或 Credential Binding 的 suspension 或 revocation，以及 Connection 进入 `Suspended` 或 `Revoked`，都停止新 Job 的创建或派发，并使未使用的 Execution Grant 失效；Job 进入 `Cancelled` 或 `Expired` 也使相关执行工作和未使用的 Grant 失效。
 
 ### Discovery and Execution Model
 
 Discovery Intent 不可变且版本化，包含 scope、资源类型、触发方式和 Capability。Sync Job 固定 Connection ID、Intent version、Binding version、scope 以及 Capability/Contract version；Job 状态仅为 `Queued`、`Dispatched`、`Running`、`Succeeded`、`Failed`、`Cancelled`、`Expired`。仅 `Succeeded` 不足以建立权威 snapshot。
-
-`CreateSyncJob` 创建 `Queued`；`DispatchSyncJob` 仅将 `Queued` 迁移为 `Dispatched`；`StartSyncJob` 仅将 `Dispatched` 迁移为 `Running`；`CompleteSyncJob` 或 `FailSyncJob` 仅能从 `Running` 分别迁移为 `Succeeded` 或 `Failed`。`CancelSyncJob` 或 `ExpireSyncJob` 可结束任一非终态 Job；`Succeeded`、`Failed`、`Cancelled`、`Expired` 均为终态。所有非法迁移显式拒绝。
 
 创建 Sync Job 前，必须验证 Discovery Intent 所需 Provider Capability 位于 Adapter Contract 支持范围内；验证失败时拒绝创建或派发。Job 仅固定已验证的 Capability/Contract version，执行中不得切换版本。
 
@@ -121,22 +117,24 @@ flowchart LR
 
 ### Failure and Recovery
 
-队列、并发、throttling state、Circuit Breaker 和 retry budget 按 Connection 加 Adapter 隔离。仅对可 retry 的规范化错误采用有界 backoff/jitter；cursor 仅在一致时恢复，否则开始新的 Snapshot。`Degraded` 保持身份不变。Connector、页面、permission 或 scope 失败产生 Incomplete。Suspended、Revoked、Cancelled 或 Expired 会使工作失效。Secret、IAM 或 Grant 状态未知时 fail closed；reconciliation 与 replay 必须幂等。
+队列、并发、throttling state、Circuit Breaker 和 retry budget 按 Connection 加 Adapter 隔离。仅对可 retry 的规范化错误采用有界 backoff/jitter；cursor 仅在一致时恢复，否则开始新的 Snapshot。`Degraded` 保持身份不变。Connector、页面、permission 或 scope 失败产生 Incomplete。Suspended、Revoked、Cancelled 或 Expired 会使工作失效。恢复后必须重新验证 Connection、Binding、Capability 和 scope；验证失败时保持或标记为 `Degraded`，不得重新派发。Secret、IAM 或 Grant 状态未知时 fail closed；reconciliation 与 replay 必须幂等。
 
 ### Validation Strategy
 
 验证以以下可判定断言覆盖 Connection identity、Tenant isolation、credential authority、Intent determinism、Grant confinement、Contract conformance、Adapter normalization、snapshot completeness、Delta semantics、idempotency/concurrency、failure isolation、traceability 与 secrecy：
 
+- 跨 Tenant 对 Connection、Binding、Intent、Job、Grant 或 Observation 的操作必须被拒绝，且不得泄漏对象存在性。
 - 扩大 Execution Grant 的 scope 或复用既有 attempt 必须被拒绝。
-- Credential rotation 不得改变 Connection ID；旧 Binding 保持审计可查，但不得用于新的 Job。
+- Cloud Access 的持久化、事件和日志不得包含 credential material；Credential rotation 不得改变 Connection ID；旧 Binding 保持审计可查，但不得用于新的 Job。
 - Job 固定的 Connection、Intent、Binding、Capability/Contract version 在执行中不得漂移。
+- Provider authentication、pagination、throttle、error 和 payload 只在 Adapter 内规范化；核心模型和下游仅见标准 Contract。
 - Connector、分页或部分 scope 失败必须产生 Incomplete，且不得产生 candidate。
 - 只有完整、scope-closed 的 Authoritative Snapshot 可以产生 candidate。
 - Delta 不得推断删除或缺失。
 - Agentless Adapter 与 Managed Connector 必须通过同一 Adapter Contract conformance suite。
 - 单一 Connection/Adapter 故障不得影响其他 Connection 或 Adapter。
-- duplicate、out-of-order 与 replay 必须保持幂等，不得破坏已提交事实。
-- 日志和事件不得包含 credential、Secret 或完整 Provider payload。
+- duplicate、out-of-order 与 replay 必须保持幂等；expected version 冲突显式拒绝，不丢更新。
+- Connection、Binding、Intent、Job/attempt、Grant、Adapter、cursor/Batch 与 candidate 必须可关联审计，且不得包含 credential、Secret 或完整 Provider payload。
 
 ### Success Criteria
 
@@ -158,7 +156,7 @@ flowchart LR
 
 ### Commands
 
-命令包括 RegisterCloudConnection、ValidateCloudConnection、SuspendCloudConnection、ResumeCloudConnection、RevokeCloudConnection；BindCredentialReference、RotateCredentialBinding、RevokeCredentialBinding；CreateDiscoveryIntent、ReviseDiscoveryIntent、ActivateDiscoveryIntent、SuspendDiscoveryIntent；CreateSyncJob、DispatchSyncJob、StartSyncJob、CompleteSyncJob、FailSyncJob、CancelSyncJob、ExpireSyncJob；AppendObservationBatch、CloseAuthoritativeSnapshot、MarkObservationBatchIncomplete。每个命令携带 Tenant、actor/source、idempotency key 和 expected version；冲突必须显式返回，不使用 last-write-wins 或分布式事务。
+命令包括 RegisterCloudConnection、ValidateCloudConnection、SuspendCloudConnection、ResumeCloudConnection、RevokeCloudConnection；BindCredentialReference、RotateCredentialBinding、RevokeCredentialBinding；CreateDiscoveryIntent、ReviseDiscoveryIntent、ActivateDiscoveryIntent、SuspendDiscoveryIntent；CreateSyncJob、DispatchSyncJob、StartSyncJob、CompleteSyncJob、FailSyncJob、CancelSyncJob、ExpireSyncJob；AppendObservationBatch、CloseAuthoritativeSnapshot、MarkObservationBatchIncomplete。每个命令携带 Tenant、actor/source、idempotency key 和 expected version，并校验 Connection、Binding、Intent、Capability、Grant、scope 和状态转换；非法命令与冲突必须显式拒绝，不使用 last-write-wins 或分布式事务。
 
 ### Queries
 
