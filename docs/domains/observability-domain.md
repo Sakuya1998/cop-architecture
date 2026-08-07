@@ -33,6 +33,7 @@ adr: []
 - 不拥有 IAM 的 Principal、Tenant 或认证授权决策，不保存 Secret/KMS credential material。
 - 不拥有 Resource Metadata 的 Resource Identity、Resource Context，也不创建 Resource Identity。
 - 不拥有 Alerting 的规则评估、outcome 或 Alert lifecycle，亦不定义 Infrastructure Collector、Backend 或 Platform Observability runtime。
+- 不定义 Dashboard 布局、完整遥测镜像、REST/API、表结构、retention 数值、产品选择或部署选择。
 
 ## Context
 
@@ -56,15 +57,15 @@ Telemetry Capability 由 versioned Telemetry Adapter Contract 声明，覆盖支
 
 ### Signal Definition and Binding Model
 
-Signal Definition 的 `signal_id` 稳定且版本化，类型仅为 Metric、Log 或 Trace，并定义 semantics、unit、allowed dimensions 与 sensitivity。Signal Binding 的版本把 Source backend selector 映射至 Signal Definition 和 Resource Context；backend names、selectors 和 query language 始终封装在 Adapter 中。未解析、歧义、跨 Tenant、schema-incompatible 或 sensitivity-conflicting 的映射必须进入 Unresolved 或 Quarantined，且绝不创建 Resource Identity。OpenTelemetry 是 Contract，不是实体。
+Signal Definition 的 `signal_id` 稳定且版本化，类型仅为 Metric、Log 或 Trace，并定义 semantics、unit、allowed dimensions 与 sensitivity；语义变化必须生成新版本，历史 Intent、Job 和 Evaluation Input 固定其既有版本。三类 Signal 共用 Contract，但必须保留各自的时间语义、结果形态、aggregation 能力与敏感性差异。Signal Binding 的版本把同一 Tenant 内的 Source backend selector 映射至 Signal Definition 和 Resource Context；backend names、selectors 和 query language 始终封装在 Adapter 中。未解析、歧义、跨 Tenant、schema-incompatible 或 sensitivity-conflicting 的映射必须进入 Unresolved 或 Quarantined，且绝不创建 Resource Identity。暂停、撤销或隔离的 Binding 版本不得用于新 Job。OpenTelemetry 是 Contract，不是实体。
 
 ### Query Intent and Execution Model
 
-Query Intent 不可变，明确 Signal、Resource/Source scope、time window、filter、aggregation、completeness、result limits 与 execution mode。小且有界的查询可受控同步执行；cross-Source、long-window、export 及 Evaluation Input 必须使用可取消、可分页、可审计的 Query Job。Job 固定 Intent、Source/config、Signal、Binding、Resource Context、Capability/Contract 和 auth context。Job 状态只能为 Queued、Dispatched、Running、Succeeded、Failed、Cancelled、Expired；Succeeded 不表示 complete。
+Query Intent 是不可变版本，明确 Signal、Resource/Source scope、time window、filter、aggregation、completeness、result limits 与 execution mode。受控同步查询和异步 Query Job 共享同一 Query Intent 及统一结果 Contract；小且有界的查询可同步执行，cross-Source、long-window、export 及 Evaluation Input 必须使用可取消、可分页、可审计的 Query Job。Job 逐项固定 Intent version、Source/config version、Signal Definition version、Binding version、Resource Context reference、Capability/Contract version 和 authorization context。Job 状态只能为 Queued、Dispatched、Running、Succeeded、Failed、Cancelled、Expired；Cancellation 或 expiry 使未开始执行失效，Succeeded 不表示 complete。
 
 ### Result Completeness and Evaluation Input Model
 
-每个 Source/Signal/Resource/window 的结果状态为 Complete、Partial、Stale 或 Unavailable；不得把缺失强制为 zero、latest、empty 或 no-data。联邦查询不保证全局一致 snapshot。projection、cache、index summary 必须声明 owner、source、as_of、freshness、retention、completeness 和 rebuildability，且永不成为 raw telemetry authority。
+每个 Source/Signal/Resource/window 的结果状态为 Complete、Partial、Stale 或 Unavailable；不得把缺失强制为 zero、latest、empty 或 no-data。联邦查询不承诺跨 Backend 全局一致 snapshot、exactly-once、global ordering 或 distributed transactions；分页/流中断或部分 Source 失败不得拼成 Complete。projection、cache、index summary 必须声明 owner、source、as_of、freshness、retention、completeness 和 rebuildability，且永不成为 raw telemetry authority。
 
 Evaluation Input 是已提交的不可变 Signal input fact，包含 query/job、source/config、signal、binding、resource、window、contract references、provenance、completeness、content hash、idempotency 与 correlation。它不包含 rule、threshold、outcome 或 Alert state；Alerting 必须把不完整输入视为 evaluation failure。发布语义为 at-least-once，消费者以 event ID、aggregate version 及 Job/Input idempotency key 处理 duplicate、out-of-order 和 replay。
 
@@ -72,26 +73,26 @@ Evaluation Input 是已提交的不可变 Signal input fact，包含 query/job�
 
 ```mermaid
 flowchart LR
-  IAM[IAM] -.->|authorization / credential reference| CP[Control Plane]
-  RM[RM] -->|Resource Context| CP
-  CP -->|versioned Source / Binding / Query Intent| DP[Data Plane]
+  IAM[IAM / Secret-KMS] -.->|authorization / credential reference| CP[Observability Control Plane]
+  RM[Resource Metadata] -->|Resource Context| CP
+  CP -->|versioned Source / Binding / Query Intent| DP[Collector / Telemetry Adapter]
   DP -->|OTel telemetry| TB[Telemetry Backend]
   DP -->|federated query| TB
   TB -->|raw query result| DP
   DP -->|normalized result + completeness| CP
-  CP --> EI[Evaluation Input]
+  CP --> EI[Immutable Evaluation Input]
   EI --> AL[Alerting]
 ```
 
-箭头仅描述受控引用或消息流，不表示 shared storage、credential copying、cross-domain direct writes、distributed transactions 或 deployment topology。
+箭头仅描述受控引用或消息流，不表示 shared writable storage、credential copying、cross-domain direct writes、distributed transactions 或 deployment topology。Telemetry Backend 保留 raw facts 的权威；Alerting 只消费 Immutable Evaluation Input。
 
 ### Failure and Recovery
 
-按 Tenant + Source + Adapter 隔离 retry、concurrency、throttling、Circuit Breaker 和 retry budget；只对 retryable errors 使用有界 backoff/jitter。错误分类仅为 AuthenticationFailed、AuthorizationDenied、RateLimited、BackendUnavailable、InvalidQuery、InvalidScope、UnsupportedCapability、BindingUnresolved、ContractViolation；raw diagnostics 只保留受控 reference。恢复前必须重新验证所有 versions、auth 和 sensitivity。授权分两阶段执行：先验证 Source/Intent，再验证 Resource/Signal；未知状态必须 fail closed。普通 events、logs、audit 不得包含 credentials、executable tokens、raw sensitive logs/traces 或 diagnostic payload。
+按 Tenant + Source + Adapter 隔离 retry、concurrency、throttling、Circuit Breaker 和 retry budget；只对 retryable errors 使用有界 backoff/jitter。错误分类仅为 AuthenticationFailed、AuthorizationDenied、RateLimited、BackendUnavailable、InvalidQuery、InvalidScope、UnsupportedCapability、BindingUnresolved、ContractViolation；AuthenticationFailed、AuthorizationDenied、InvalidScope、ContractViolation 和 sensitivity-conflicting 不得自动重试，raw diagnostics 只保留受控 reference。恢复前逐项重新验证 Source/config、Binding、Resource Context、Capability/Contract、authorization 与 sensitivity。授权分两阶段执行：先验证 Tenant/Principal/Source/Intent，再验证 Resource Context/Signal scope/sensitivity；未知状态必须 fail closed。普通 events、logs、audit 不得包含 credentials、executable tokens、raw sensitive logs/traces 或 diagnostic payload。
 
 ### Validation Strategy
 
-验证必须覆盖状态迁移、expected version、Tenant 隔离、Binding 解析、Contract 固定、两阶段授权、completeness 传播、重复投递和乱序 replay。针对每个 Source/Adapter 的验证应受限于其隔离预算，并在 Capability 或 config 变更后重新执行。
+验证必须覆盖 Source identity/rotation、Tenant isolation、credential authority、Signal semantics、Binding resolution、Query determinism、Adapter conformance、federated completeness、Evaluation boundary、idempotency/concurrency、failure isolation、traceability/secrecy，以及 managed-environment 与 Platform ownership separation。验证还必须覆盖状态迁移、expected version、Contract 固定、两阶段授权、completeness 传播、重复投递和乱序 replay；针对每个 Source/Adapter 的验证应受限于其隔离预算，并在 Capability 或 config 变更后重新执行。
 
 ### Success Criteria
 
@@ -105,15 +106,15 @@ flowchart LR
 | Telemetry Capability | Observability | versioned Telemetry Adapter Contract；不拥有 Backend internals。 |
 | Signal Definition | Observability | stable versioned signal_id、类型、语义、单位、dimensions、sensitivity。 |
 | Signal Binding | Observability | Source selector 至 Signal Definition 与 Resource Context；不创建 Resource Identity。 |
-| Query Intent | Observability | immutable scope、window、filter、aggregation、completeness、limits、mode。 |
-| Query Job | Observability | 固定 Intent、版本、auth context；执行不拥有 raw telemetry。 |
+| Query Intent | Observability | immutable version；同步与异步执行共享统一结果 Contract。 |
+| Query Job | Observability | 逐项固定 Intent、Source/config、Signal Definition、Binding、Resource Context、Capability/Contract versions 与 authorization context；执行不拥有 raw telemetry。 |
 | Evaluation Input | Observability | immutable fact、provenance、completeness、hash、idempotency、correlation；不含 Alerting state。 |
 
 ## Commands and Queries
 
 ### Commands
 
-批准的命令为 RegisterTelemetrySource、ValidateTelemetrySource、ReviseTelemetrySourceConfig、SuspendTelemetrySource、ResumeTelemetrySource、RevokeTelemetrySource；DefineSignal、ReviseSignalDefinition；CreateSignalBinding、ResolveSignalBinding、QuarantineSignalBinding、ActivateSignalBinding、SuspendSignalBinding、RevokeSignalBinding；CreateQueryIntent、ReviseQueryIntent；CreateQueryJob、DispatchQueryJob、StartQueryJob、CompleteQueryJob、FailQueryJob、CancelQueryJob、ExpireQueryJob；CommitEvaluationInput、InvalidateEvaluationInput。所有管理命令必须携带 Tenant、actor/source、idempotency key、expected version，并显式拒绝无效状态迁移与并发冲突。
+批准的命令为 RegisterTelemetrySource、ValidateTelemetrySource、ReviseTelemetrySourceConfig、SuspendTelemetrySource、ResumeTelemetrySource、RevokeTelemetrySource；DefineSignal、ReviseSignalDefinition；CreateSignalBinding、ResolveSignalBinding、QuarantineSignalBinding、ActivateSignalBinding、SuspendSignalBinding、RevokeSignalBinding；CreateQueryIntent、ReviseQueryIntent；CreateQueryJob、DispatchQueryJob、StartQueryJob、CompleteQueryJob、FailQueryJob、CancelQueryJob、ExpireQueryJob；CommitEvaluationInput、InvalidateEvaluationInput。所有管理命令必须携带 Tenant、actor/source、idempotency key、expected version，并显式拒绝无效状态迁移与并发冲突；还必须校验 Source、Binding、Resource Context、Signal、Capability、authorization 与 sensitivity，禁止 last-write-wins。
 
 ### Queries
 
@@ -123,11 +124,11 @@ flowchart LR
 
 ### Events
 
-至少以 at-least-once 发布 Source、Signal、Binding、Job 和 Evaluation Input 生命周期事件；事件包含标准 error category 或 controlled reference，并受未来 COP-API-002 接受门禁约束。事件消费者使用 event ID、aggregate version 和 Job/Input idempotency key 去重并处理 out-of-order/replay。
+至少以 at-least-once 发布 Source、Signal、Binding、Job 和 Evaluation Input 生命周期事件；每个事件的最小载荷为 stable ID、Tenant、version、scope、status、标准 error category 或 controlled reference、time、correlation 与 completeness，并受未来 COP-API-002 接受门禁约束。事件消费者使用 event ID、aggregate version 和 Job/Input idempotency key 去重并处理 out-of-order/replay。
 
 ### Audit
 
-持续记录 actor、auth、version、scope、completeness 和 correlation。高流量 OTel/query 可批量审计，但不得隐藏 identity、scope、version、completeness 或 failure。
+持续记录 Source、Binding、Intent、Job、Adapter/Capability、authorization、completeness 与 Evaluation Input 的连续链，以及 actor、auth、version、scope 和 correlation。高流量 OTel/query 可批量审计，但不得隐藏 identity、scope、version、completeness 或 failure。
 
 ## Invariants
 
@@ -135,6 +136,7 @@ flowchart LR
 - Source ID 与 Signal ID 稳定且不可复用；Source 的 Tenant 或 Backend identity 变更只能创建新 Source，查询执行固定全部引用版本。
 - 结果完整性是显式事实，缺失不可推断为零值、最新值、空结果或无数据；Succeeded Job 也必须保留 completeness。
 - 未知授权、Binding、Contract 或 sensitivity 状态必须 fail closed，且没有任何普通记录可携带秘密或原始敏感遥测。
+- 不得扩大既定 scope，不得采用 last-write-wins、exactly-once、global ordering 或 distributed transaction 语义。
 
 ## Relationships
 
@@ -145,7 +147,7 @@ flowchart LR
 
 ## Constraints
 
-受管环境 Observability 仅协调版本化接入和受控结果，Platform Observability 仍由 Infrastructure 负责。所有确定性、失败隔离、secrecy 和 completeness 约束必须在 Source、Adapter、Query Job 与 Evaluation Input 边界执行。本文仍为 draft；任何重大演进先经 RFC，且 COP-API-002 事件契约须在其被接受后才可成为实现门禁。
+受管环境 Observability 仅协调版本化接入和受控结果，Platform Observability 仍由 Infrastructure 负责。禁止 shared writable storage、direct writes、scope expansion、last-write-wins、exactly-once、global ordering 和 distributed transaction。所有确定性、失败隔离、secrecy 和 completeness 约束必须在 Source、Adapter、Query Job 与 Evaluation Input 边界执行。本文仍为 draft；任何重大演进先经 RFC，且 COP-API-002 事件契约须在其被接受后才可成为实现门禁。
 
 ## Quality Attributes
 
