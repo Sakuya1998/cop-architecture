@@ -48,7 +48,7 @@ Alerting 是消费 Resource Context 和不可变 Evaluation Input 的 Core bound
 | Term | Meaning |
 | --- | --- |
 | Rule | Tenant 内具有稳定身份、管理权、作用域和当前激活版本的告警规则 |
-| Rule Version | 固定条件、持续窗口、严重级别、Resource selector、输入 Contract 和通知策略引用的不可变版本 |
+| Rule Version | 固定条件、持续窗口、严重级别、Resource selector、输入 Contract 和 Notification Policy version 的不可变版本 |
 | Evaluation Input | Observability 已提交、不可变、带完整性和 provenance 的 Signal 输入事实 |
 | Evaluation | 固定 Rule/Input/Resource/授权上下文的一次求值事实，结果为 Matched、NotMatched 或 Failed |
 | Alert Instance | 同一去重身份的一次连续告警发生，具有不可重开的生命周期 |
@@ -67,9 +67,9 @@ Alerting 不读取或改写其他领域私有存储，不复制完整原始 Tele
 
 ### Rule and Management Authority Model
 
-Rule 使用稳定 `rule_id`，只属于一个 Tenant，并通过不可变 Rule version 演进。Rule version 固定条件、持续窗口、严重级别、Resource selector、Signal/Evaluation Input Contract、通知策略引用和管理权类别。条件、窗口、严重级别、作用域或关联 Contract 的语义变化创建新版本，历史 Evaluation、Alert Instance 和 Notification Intent 继续引用原版本。
+Rule 使用稳定 `rule_id`，只属于一个 Tenant，并通过不可变 Rule version 演进。Rule version 固定条件、持续窗口、严重级别、Resource selector、Signal/Evaluation Input Contract、管理权类别以及 Alerting-owned Notification Policy。Notification Policy 是 Rule version 内的不可变通知编排配置，使用稳定 `notification_policy_id` 和不可变 `notification_policy_version`，其管理权跟随 owning Rule 的 `Tenant-managed` 或 `Platform-managed` 类别；它不是独立 Aggregate。条件、窗口、严重级别、作用域、关联 Contract 或 Notification Policy 的语义变化创建新版本，历史 Evaluation、Alert Instance、Notification Decision 和 Notification Intent 继续引用原版本。
 
-Rule 分为 `Tenant-managed` 与 `Platform-managed`。两者共享 Evaluation 和 Alert lifecycle Contract，但创建、修改、激活、禁用和通知策略权限分离；Tenant 不得修改平台规则，平台也不得静默改写 Tenant 规则。只有已激活版本接受新 Evaluation。新版本激活、Rule 禁用或 Resource scope 撤销时，以受治理终止动作结束旧版本活跃实例，并记录 actor、reason、expected version、time 和 correlation。
+Rule 分为 `Tenant-managed` 与 `Platform-managed`。两者共享 Evaluation 和 Alert lifecycle Contract，但创建、修改、激活、禁用和 Notification Policy 权限分离；Tenant 不得修改平台规则，平台也不得静默改写 Tenant 规则。只有已激活版本接受新 Evaluation；Rule version 变为 inactive、superseded 或 disabled 后继续拒绝新 Evaluation。此前已接受的 in-flight Evaluation 可以完成或被显式取消，其结果保持可审计，但在 Rule version inactive 后不得创建或推进任何 Alert Instance。新版本激活、Rule 禁用或 Resource scope 撤销时，以受治理终止动作结束旧版本活跃实例，并记录 actor、reason、expected version、time 和 correlation。
 
 ### Evaluation and Input Contract
 
@@ -95,7 +95,7 @@ Suppression Policy 使用稳定身份和不可变版本，固定 Tenant、作用
 
 ### Notification Orchestration Model
 
-Alert state transition 提交后，Alerting 使用固定通知策略版本和当前 Suppression 判定形成编排决定。未被抑制时生成不可变 Notification Intent，固定 Tenant、Alert Instance、触发转换、Rule version、通知策略版本、target Reference、idempotency key、time 和 correlation。
+Alert state transition 提交后，Alerting 形成具有稳定 `notification_decision_id` 和业务 idempotency key，并固定 Rule version 与 Notification Policy version 的 Notification Decision。该决定以 Alert transition occurred time 为基准，使用当时生效的 Suppression Policy version 求值，并固定记录命中的 policy version 或明确的 `no-match` 结果；retry 和 replay 必须复用该固定结果。未被抑制时生成不可变 Notification Intent，固定 Tenant、Alert Instance、触发转换、Rule version、Notification Policy version、target Reference、idempotency key、time 和 correlation。
 
 Alerting 只保存受治理目标和 Secret/KMS Reference，不保存 credential material 或供应商可执行 token。外部通知系统负责渠道适配、供应商协议、投递重试和最终 Delivery Result；Alerting 记录 Delivery Result Reference、标准结果分类、time 和 correlation。Delivery failure 不回滚 Alert state，也不改变 Evaluation outcome。Intent 和 Result 的 duplicate、out-of-order 与 replay 必须幂等处理。
 
@@ -129,30 +129,30 @@ flowchart LR
 
 重试、并发、限流和故障隔离至少按 Tenant 与 Rule/Notification target scope 隔离。核心事实先持久化，领域事件和 Notification Intent 使用稳定 ID 支持幂等重放；Observability、Alerting 与外部通知系统之间不要求分布式事务。read model 允许最终一致，但必须声明 `as_of`、更新时间、完整性或 stale 状态。
 
-所有核心对象、Command 和 Event 携带 Tenant identity。Rule 管理与 Evaluation/Notification 执行分别校验 Tenant、授权、Resource scope、敏感级别和引用状态，任何一层无法确认时 fail closed。日志、事件、审计和普通查询只保存最小必要字段及受控证据引用，不泄漏 Secret、原始 Telemetry、完整敏感 Evaluation Input 或通知内容。
+所有核心对象、Command 和 Event 携带 Tenant identity。双阶段授权由 management Command validation 和 Evaluation/Notification execution validation 组成；两阶段分别校验 Tenant、授权、Resource scope、敏感级别和引用状态，任何一层无法确认时 fail closed。日志、事件、审计和普通查询只保存最小必要字段及受控证据引用，不泄漏 Secret、原始 Telemetry、完整敏感 Evaluation Input 或通知内容。
 
 ### Validation Strategy
 
-- **Rule contract:** 验证稳定 Rule ID、不可变版本、激活校验、旧版本终止和 Tenant-managed/Platform-managed 权限分离。
+- **Rule contract:** 验证稳定 Rule ID、不可变版本、Notification Policy 稳定 ID/不可变版本及其随 owning Rule 管理权、激活校验、旧版本终止和 Tenant-managed/Platform-managed 权限分离；验证 inactive 前已接受的 in-flight Evaluation 可完成或显式取消且结果可审计，但不能创建或推进 Alert Instance。
 - **Evaluation contract:** 验证稳定 ID、幂等键、固定引用及 `Matched`、`NotMatched`、`Failed` 互斥语义。
 - **Input completeness:** 验证 `Partial`、`Unavailable`、timeout 和 Contract violation 均不触发正常 Alert state transition。
 - **Alert lifecycle:** 验证 `Pending -> Firing -> Resolved`、终态不可重开、终态后再次命中新建实例。
 - **Deduplication and concurrency:** 验证同一去重键只有一个活跃实例，以及 duplicate、late、out-of-order、replay、expected version 和并发冲突。
 - **Disposition and suppression:** 验证 Acknowledgement 不等于 Resolved，Suppression 只影响 Notification Orchestration。
-- **Notification boundary:** 验证 Intent 在状态提交后形成、Delivery failure 不回滚状态、外部系统保留最终投递权威。
-- **Tenant isolation and secrecy:** 验证跨 Tenant 操作默认拒绝，Secret、credential 和敏感完整载荷不进入普通事件、日志或审计。
-- **Traceability:** 验证 Rule version 到 Delivery Result 的连续关联链，以及 Command/Event 与 `COP-API-002` 的兼容方向。
+- **Notification boundary:** 验证 Notification Decision 的稳定 ID/幂等身份、以 Alert transition occurred time 和当时有效 Suppression Policy version 固定 matched/no-match 结果、Intent 在状态提交后形成、Delivery failure 不回滚状态，以及外部系统保留最终投递权威。
+- **Tenant isolation and secrecy:** 验证 management Command validation 与 Evaluation/Notification execution validation 的双阶段授权、跨 Tenant 操作默认拒绝，以及 Secret、credential 和敏感完整载荷不进入普通事件、日志或审计。
+- **Traceability:** 验证 Rule version 到 Delivery Result Reference 的连续关联链，以及 Command/Event 与 `COP-API-002` 的兼容方向。
 - **Ownership separation:** 验证 Alerting 不创建 Resource Identity，不保存原始 Telemetry，不实现渠道 Adapter 或自动修复 Workflow。
 
 ### Success Criteria
 
-读者能识别 Alerting、Observability、Telemetry Backend、Resource Metadata、IAM、Secret/KMS、外部通知系统、Audit 与 Dashboard/Experience 的事实权威。Rule version、Evaluation、Alert lifecycle、处置与抑制、Notification Intent、双重授权、完整性、故障隔离、幂等和审计语义均可验证；文档不引入未经批准的产品、API、部署、数值或跨领域实现决策。
+读者能识别 Alerting、Observability、Telemetry Backend、Resource Metadata、IAM、Secret/KMS、外部通知系统、Audit 与 Dashboard/Experience 的事实权威。Rule version、Evaluation、Alert lifecycle、处置与抑制、Notification Intent、management Command validation 与 Evaluation/Notification execution validation 构成的双阶段授权、完整性、故障隔离、幂等和审计语义均可验证；文档不引入未经批准的产品、API、部署、数值或跨领域实现决策。
 
 ## Aggregates and Entities
 
 | Aggregate or entity | Ownership | Key references and boundaries |
 | --- | --- | --- |
-| Rule | 稳定 Rule identity、Tenant、管理权、激活版本和作用域 | 不可变版本引用 Evaluation Input Contract、Resource selector 和通知策略；不包含 Backend 查询语言 |
+| Rule | 稳定 Rule identity、Tenant、管理权、激活版本和作用域 | 不可变版本内含稳定 ID/不可变版本的 Notification Policy，并引用 Evaluation Input Contract 和 Resource selector；Notification Policy 不是独立 Aggregate，不包含 Backend 查询语言 |
 | Evaluation | 一次固定上下文的 Matched、NotMatched 或 Failed 事实 | 引用 Rule version、Evaluation Input、Resource Context 与授权；失败不推进 Alert state |
 | Alert Instance | 活跃去重身份、生命周期、状态转换原因和 predecessor | 不复制 Resource 主数据；Resolved 不重开 |
 | Acknowledgement | 独立人工处置事实 | 可以影响通知策略，但不等于 Resolved |
@@ -192,26 +192,26 @@ Rule 命令包括 CreateRule、CreateRuleVersion、ActivateRuleVersion、Disable
 
 ### Events
 
-事件覆盖 Rule version created/activated/superseded 和 Rule disabled；Evaluation requested/matched/not matched/failed；Alert Instance created/pending/firing/resolved；Alert acknowledged；Suppression Policy version created/activated/expired/revoked 和 Notification suppressed；Notification Intent created 与 Delivery Result recorded。
+事件覆盖 Rule version created/activated/superseded 和 Rule disabled；Evaluation requested/matched/not matched/failed；Alert Instance created/pending/firing/resolved；Alert acknowledged；Suppression Policy version created/activated/expired/revoked 和 Notification suppressed；Notification Intent created 与 Delivery Result Reference recorded。
 
 事件采用与 `COP-API-002` 兼容的最小 Contract，携带稳定 event ID、Tenant、aggregate ID/version、Rule/Policy version、状态或结果分类、time、correlation 和必要受控 reference，不携带 Secret、credential material、原始 Telemetry、完整敏感输入或供应商可执行 token。消费者使用 event ID、aggregate version 和业务 idempotency key 处理 duplicate、out-of-order 和 replay，不依赖全局顺序。
 
 ### Audit
 
-Rule version、Evaluation Input、Evaluation、Alert transition、Acknowledgement/Suppression decision、Notification Intent 和 Delivery Result 形成连续审计链。审计保留 actor/source、Tenant、版本、状态或结果、reason、time、correlation 和受控证据引用；具体 retention 由 `COP-SEC-003` 治理，不在本文决定。审计与普通日志不得复制 credential、原始 Telemetry 或完整敏感 payload。
+Rule version、Evaluation Input、Evaluation、Alert transition、Acknowledgement/Suppression decision、Notification Decision、Notification Intent 和 Delivery Result Reference 形成连续审计链。审计保留 actor/source、Tenant、版本、状态或结果、reason、time、correlation 和受控证据引用；具体 retention 由 `COP-SEC-003` 治理，不在本文决定。审计与普通日志不得复制 credential、原始 Telemetry 或完整敏感 payload。
 
 ## Invariants
 
-- Rule、Evaluation、Alert Instance、Suppression Policy 和 Notification Intent 各自只属于一个 Tenant。
-- Rule 与 Suppression Policy 使用稳定 ID 和不可变版本；历史引用不得漂移到最新版本。
-- 只有已激活 Rule version 可以接受新的 Evaluation。
+- Rule、Rule version 内的 Notification Policy、Evaluation、Alert Instance、Suppression Policy、Notification Decision 和 Notification Intent 各自只属于一个 Tenant。
+- Rule、Rule version 内的 Notification Policy 与 Suppression Policy 使用稳定 ID 和不可变版本；Notification Policy 管理权跟随 owning Rule，历史引用不得漂移到最新版本。
+- 只有已激活 Rule version 可以接受新的 Evaluation；inactive 前已接受的 in-flight Evaluation 可以完成或显式取消并保留审计结果，但不得在 Rule version inactive 后创建或推进 Alert Instance。
 - 只有完整成功的 `Matched` 或 `NotMatched` 可以推进 Alert lifecycle。
 - 同一活跃去重键同时只能存在一个 Alert Instance；`Resolved` 实例不得重新打开。
 - Acknowledgement 不等于 Resolved；Suppression 不暂停 Evaluation 或 Alert state transition。
-- Notification Intent 只在核心事实提交后形成；Delivery failure 不回滚 Alert state。
+- Notification Decision 使用稳定 ID 和幂等身份，固定 Rule/Notification Policy version，并以 Alert transition occurred time 及当时有效 Suppression Policy version 固定 matched Suppression Policy version 或 `no-match` 结果；Notification Intent 只在核心事实提交后形成，Delivery failure 不回滚 Alert state。
 - 所有状态变更使用 idempotency key 和 expected version；冲突显式拒绝。
 - late、duplicate、out-of-order 和 replay 结果不得覆盖更新状态。
-- Tenant、授权、Resource scope、敏感级别或引用状态无法确认时 fail closed。
+- management Command validation 或 Evaluation/Notification execution validation 无法确认 Tenant、授权、Resource scope、敏感级别或引用状态时 fail closed。
 - Alerting 不拥有原始 Telemetry、Resource 主数据、渠道 Adapter、credential material 或自动修复 Workflow。
 
 ## Relationships
@@ -233,9 +233,9 @@ Rule version、Evaluation Input、Evaluation、Alert transition、Acknowledgemen
 
 ## Quality Attributes
 
-- **Security:** Tenant 与权限在管理和执行阶段分别校验，Secret 只通过受控 Reference 使用。
+- **Security:** management Command validation 与 Evaluation/Notification execution validation 分别校验 Tenant 与权限，Secret 只通过受控 Reference 使用。
 - **Reliability:** 完整性、失败、幂等、并发和乱序语义明确，单一规则或渠道故障不扩散到无关 Tenant。
-- **Auditability:** Rule version 到 Delivery Result 的事实链连续、可关联且使用最小必要载荷。
+- **Auditability:** Rule version 到 Delivery Result Reference 的事实链连续、可关联且使用最小必要载荷。
 - **Consistency:** 核心状态使用 expected version；read model 声明 `as_of`、完整性或 stale 状态。
 - **Compatibility:** Domain Event 与 `COP-API-002` 保持兼容方向，不假设 exactly-once 或全局顺序。
 - **Evolvability:** Rule、Suppression Policy 和外部 Contract 使用不可变版本，历史引用不漂移。
