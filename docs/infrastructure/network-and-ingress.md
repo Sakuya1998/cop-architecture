@@ -79,7 +79,7 @@ adr: []
 Trust Zone 是 responsibility、identity、allowed direction 和 failure boundary，不等于固定 subnet、VPC、cluster、Gateway 或 network segment：
 
 - **External Client Zone：** Portal user、CLI、API client、Webhook producer、integration client 和 operator/admin client；所有输入均视为不可信。
-- **Governed Ingress Boundary：** 负责受控 TLS policy、connection admission、request boundary、identity bootstrap、Tenant/context validation、rate control 和 route selection。
+- **Governed Ingress Boundary：** 负责受控 TLS policy、connection admission、request boundary、identity bootstrap、Tenant/context validation、rate control 和 route selection；credential/claim validation 委托给 owning authentication Contract，该 owner 对 External Identity dependency 的调用只通过 Controlled Egress。
 - **Private Service Zone：** 承载 Owner Contract、Control、Execution 和 Platform Operations；内部 hop 没有隐式信任。
 - **Private Data Zone：** 承载 Platform Data capability；不提供未经 Owner Contract 授权的 public 或 internal bypass。
 - **Controlled Egress Boundary：** 治理到 Cloud/Kubernetes API、External Identity、Secret/KMS、Telemetry Backend、Notification System 和 Object Capability 的调用。
@@ -115,12 +115,12 @@ Trust Zone 是 responsibility、identity、allowed direction 和 failure boundar
 TLS 可以在 CDN、Load Balancer、Gateway 或等价受控边界终止，但 termination point 必须属于明确 Trust Zone。后续 hop 仍使用受保护 channel 和可验证 workload identity；edge termination 不会把 internal network 变为 trusted zone。
 
 - 外部传入的 user、Tenant、role、scope、client certificate 和 forwarding header 默认不可信。
-- owning authentication boundary 验证原始 credential/claim 后，重新建立受保护的 identity 与 authorization context。
+- owning authentication Contract 验证原始 credential/claim 后，重新建立受保护的 identity 与 authorization context。
 - proxy 追加的 source、scheme、client identity 或 route metadata 必须具有可验证 provenance，并覆盖或拒绝未受信输入。
 - downstream workload 只接受来自允许 upstream identity 的 context。
 - TLS peer identity 只证明 connection peer，不自动授予 Command、Query、task、data 或 admin permission。
 
-Trust material 具有明确 owner、scope、audience 和 expiry；rotation 支持受控 overlap；revocation、expiry 和 trust bundle change 可传播、可审计并具有 rollback 或 forward-recovery evidence。identity 或 trust 无法确认时 fail closed。issuer、revocation service、authorization dependency 或 trust distribution 暂时不可用时按 dependency failure 处理，不伪装为明确 identity denial 或 success。
+Workload/client identity 具有明确 owner、scope、audience 和 expiry。Trust bundle/material 具有明确 owner 和 version；rotation 支持受控 overlap，revocation 与 distribution 可传播、可审计，并具有 rollback 或 forward-recovery evidence。identity 或 trust 无法确认时 fail closed。issuer、revocation service、authorization dependency 或 trust distribution 暂时不可用时按 dependency failure 处理，不伪装为明确 identity denial 或 success。
 
 CA hierarchy、certificate lifetime、issuance、key storage、rotation tooling 和 trust distribution implementation 由 Security 专项设计拥有。
 
@@ -147,6 +147,7 @@ redirect、DNS change、certificate mismatch 和 destination identity change 不
 - Connector/Collector 只从 Managed Environment 主动建立双向验证的 outbound authenticated session。
 - connection identity 与 task authorization 分离；session established 不产生 cluster、resource 或 operation permission。
 - task 另行验证 Tenant、cluster、resource、operation、policy/config version、expiry 和 scoped execution grant。
+- connection initiation 与 application-message direction 分离。在已建立的 outbound session 内，authorized task message 从 Execution 流向 Connector/Collector；fact、progress、freshness、failure 和 recovery evidence 从 Connector/Collector 流向 Execution；两种 application-message direction 都不建立新的 inbound connection。
 - 支持 polling 或 controlled streaming，不固定 protocol。
 - session 具有 expiry、revocation、bounded queue、backpressure、heartbeat/freshness、disconnect/reconnect、checkpoint 和 reconciliation。
 - COP 不要求进入 Managed Environment 的 inbound control connection，也不要求客户开放业务 workload inbound path。
@@ -159,7 +160,7 @@ redirect、DNS change、certificate mismatch 和 destination identity change 不
 | Command/Query | Client → Governed Ingress → Owner Contract | identity/Tenant/scope validation、bounded timeout、idempotency context；Query 不穿过 Execution，也不直读 Private Data |
 | Event | Owner → Event Transport → Consumer | committed fact first、at-least-once、stable event ID、duplicate/out-of-order/replay handling；不假设 exactly-once 或全局顺序 |
 | Telemetry/Bulk | Collector/Adapter → owning ingestion/query boundary | bounded batch/stream、backpressure、freshness、partial/stale/degraded 状态；不得阻塞 Command control path |
-| Managed Session | Connector/Collector → Managed Session Boundary → Execution | outbound-only、mutual identity、独立 task authorization、expiry/revocation、checkpoint/reconnect |
+| Managed Session | Connector/Collector 发起 outbound session；已建立 session 内承载 Execution 到 Connector/Collector 的 task message 与 Connector/Collector 到 Execution 的 evidence | mutual identity、独立 task authorization、expiry/revocation、checkpoint/reconnect；application-message direction 不建立新 connection |
 | External Adapter | Execution/Owner → Controlled Egress → External Infrastructure | destination identity、credential reference、rate/backoff、unknown outcome 与 dependency isolation |
 
 Traffic Class 不固定 HTTP、gRPC、WebSocket、broker、OTLP 或其他 protocol。Protocol choice 必须保持对应 direction、identity、authorization、version、backpressure 和 failure Contract。
