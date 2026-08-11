@@ -79,7 +79,9 @@ adr: []
 
 这些区域表达 responsibility、trust 与 failure boundary，不是固定的 cluster、service、process、network segment、机房或物理位置。物理共置不合并 authority；物理分离也不改变 owning Contract。
 
-由 COP operator 控制、专用于 COP 且遵循 COP backup、identity、network 与 recovery Contract 的 managed capability，即使托管在外部云服务中，也可逻辑归入 Management Environment。归属依据是责任与信任 Contract，而不是物理位置。
+只有由 COP 拥有、并通过 COP owner Contract 治理 lifecycle 和 authority 的 Platform Data capability，才可逻辑归入 Management Environment；这类 operator-managed COP data capability 即使物理托管在外部云服务中，仍可属于 Management Environment。归属依据是 ownership、lifecycle、authority 与 trust Contract，而不是运营方或物理位置。
+
+External Identity Provider、Secret/KMS、Telemetry Backend、Notification System 和 Delivery Result 保留独立外部 authority，无论由谁运营或是否物理共置，始终属于 External Infrastructure。operator management 或物理共置不能把 external identity、Secret、raw Telemetry 或 external Delivery Result 转换为 COP-owned Platform Data capability。
 
 ### Management Environment Capabilities
 
@@ -124,6 +126,8 @@ External Infrastructure 保留 Cloud/Kubernetes actual state、external identity
 - **Event Path：** Domain Event 只在 authoritative fact 成功提交后发布。Event Transport 提供 at-least-once 传播；消费者使用稳定 event ID、aggregate version 与业务 idempotency key 处理 duplicate、out-of-order 和 replay，不依赖 exactly-once、全局顺序或跨边界分布式事务。
 
 Command 被接受只表示持久化了合法意图，不证明外部执行完成。Event 只能描述已提交事实，不能把 queue、缓存状态或未知外部结果提升为权威事实。
+
+只有 owning lifecycle Contract 可以断言 completed：它必须先验证 terminal execution fact 或 external-authority reference、expected task/config version 和 scope，并持久提交 terminal lifecycle state。dispatch、queue acknowledgement、transport acknowledgement、Connector response 或未经验证的 Adapter return 都不能断言 completed。unknown external outcome 保持 non-completed，必须通过 status query、idempotent retry 或 reconciliation 确认后，才能由 owning lifecycle Contract 推进状态。
 
 ### Security and Trust Boundaries
 
@@ -179,7 +183,8 @@ flowchart LR
     INGRESS["Ingress and Experience Runtime"]
     CONTROL["Control Runtime"]
     EXEC["Execution Runtime"]
-    DATA["Platform Data Capabilities"]
+    OWNER["Owner Contract Boundary / Governed Read Models / Fact Submission"]
+    DATA["Platform Data Infrastructure Capabilities"]
   end
 
   subgraph MANAGED["Managed Environments"]
@@ -194,10 +199,11 @@ flowchart LR
 
   USERS -->|"governed Command / Query"| INGRESS
   INGRESS -->|"validated Command"| CONTROL
-  INGRESS -->|"governed Query"| DATA
+  INGRESS -->|"governed Query"| OWNER
   CONTROL -.->|"authorized intent / scoped grant"| EXEC
   EXEC -.->|"facts / progress / freshness / failure"| CONTROL
-  EXEC -->|"owner Contract"| DATA
+  EXEC -->|"submitted facts"| OWNER
+  OWNER -->|"authorized data access"| DATA
   CONNECTOR -->|"outbound authenticated session"| EXEC
   CONNECTOR -->|"local collection"| LOCAL
   EXEC -->|"Adapter Contract"| EXT
@@ -207,10 +213,12 @@ flowchart LR
 
 图中区域表示 responsibility、trust 与 failure boundary，不表示固定 cluster、service、process、network segment 或物理位置。箭头表示受治理的 Contract 与 context 流向，不表示共享存储、固定物理拓扑或跨边界分布式事务；虚线表示 authorized intent、fact signal 或 cross-cutting security context。
 
+Owner Contract Boundary 是访问 Platform Data Infrastructure Capabilities 的唯一入口：Query 必须经过 governed read model，Execution 提交的 fact 必须经过 owner Contract，数据访问必须显式授权。该边界只治理读写路径，不把 domain ownership 与 infrastructure capability 合并，也不授予基础设施新的领域 authority。
+
 ### Validation Strategy
 
 - 验证三个区域、四类 Management Environment capability 和外部 authority 可独立识别，且 MVP 物理共置时逻辑隔离仍可验证。
-- 验证 Command、Execution、Query 和 Event 不形成共享写存储、循环同步依赖或跨边界直接私有访问。
+- 验证 Command、Execution、Query 和 Event 不形成共享写存储、循环同步依赖或跨边界直接私有访问；所有 Platform Data Infrastructure Capabilities 访问均经过 Owner Contract Boundary。
 - 验证 Managed Connector/Collector 只建立 outbound authenticated session，scoped task 与 fact reporting 保留 identity、Tenant、authorization 和 correlation context。
 - 验证五类 Data Infrastructure Capability 的 authority 与恢复语义互不混淆，尤其是 Telemetry Backend 的独立外部 raw Telemetry authority。
 - 验证自托管 Profile 也保留 Tenant boundary，Secret/credential 不进入普通 task、event、log、backup metadata 或 read model。
