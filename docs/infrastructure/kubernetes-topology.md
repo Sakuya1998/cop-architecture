@@ -86,16 +86,17 @@ Placement Class 是调度和隔离输入，不等于固定 workload kind、names
 | Authority-sensitive | 处理 authorization、authorized intent、task lifecycle、领域状态或 owner Contract | 独立 workload identity、最小权限、受控数据访问、version 与 audit continuity；维护期间不得丢失 authority evidence |
 | Dependency-facing | 调用外部 API、执行 Adapter、处理 Connector session 或承受供应商错误与限速 | 按 Tenant、connection、managed environment、Adapter 和 dependency 隔离 resource、backpressure 与 failure signal |
 | State-preserving | 承载需要 Preserve 的 committed state 或其 Kubernetes runtime | 明确 failure domain、startup/shutdown、disruption、maintenance 和恢复依赖；Pod 状态不替代数据完整性验证 |
-| Cluster-integrated | 需要 cluster-scoped read、host access、privileged capability 或特殊 runtime permission | 与普通 workload 强隔离；使用专用 identity；permission、目标范围、用途、audit 和撤销路径显式 |
+| Cluster-integrated | cluster-scoped read 需要扩大 Kubernetes API permission scope；host access、privileged capability 或特殊 runtime permission 会触及 host-level boundary | cluster-scoped read 使用专用 identity、ServiceAccount 和最小 RBAC；host-access 或 privileged capability 必须使用普通 namespace、ServiceAccount 和 RBAC 无法绕过的 required isolation boundary；独立 node、sandbox runtime、cluster 或等价实现由后续设计选择，不固定数量 |
 | Platform Operations | 提供 health、audit、Metrics、Logs、Traces、dependency 或 recovery evidence | 不获得业务 authority；不绕过 owner Contract 或 Tenant boundary；自身故障不得静默隐藏平台状态 |
 
-普通无状态 workload 可以在满足 identity、RBAC、resource、health 和 failure signal 的条件下共置。Cluster-integrated、authority-sensitive 或 state-preserving workload 在权限、数据或单点故障传播不可接受时使用 required isolation。
+普通无状态 workload 可以在满足 identity、RBAC、resource、health 和 failure signal 的条件下共置。Cluster-scoped read 主要由专用 identity 与最小 RBAC 控制；host-access 或 privileged capability 属于 host-level risk，必须使用 required isolation。Authority-sensitive 或 state-preserving workload 在权限、数据或单点故障传播不可接受时同样使用 required isolation。
 
 ### Namespace, Identity, and Permission Boundaries
 
 Namespace 依据 trust、ownership、data access、operational lifecycle 和 failure boundary 划分，不固定名称，也不要求每个 capability 独占 namespace。以下情况不得无条件共用同一 namespace：
 
-- cluster-scoped、privileged 或 host-access workload 与普通 capability。
+- 需要 cluster-scoped read 的 workload 与仅需 namespace-scoped permission 的普通 capability 不共享 ServiceAccount 或隐式权限路径。
+- privileged 或 host-access workload 与普通 capability。
 - external-facing workload 与私有 Platform Data capability。
 - 不同 owner 且具有独立数据写权限的 capability。
 - maintenance、recovery、resource 或 failure isolation 要求明显不同的 workload。
@@ -104,14 +105,16 @@ Namespace 不是 Tenant authority。共享运行单元仍显式携带 Tenant con
 
 每个独立 trust/ownership boundary 使用可验证 workload identity 和专用 ServiceAccount。默认 ServiceAccount 不承载业务权限或 cluster-scoped permission。RBAC 默认限定 namespace、resource、verb 和目标范围，遵循 default deny 与 least privilege。
 
-Cluster-scoped permission 必须有明确用途、独立 identity、可审计 actor/source、目标范围、撤销和轮换路径。Privileged、host access 或等价高风险 capability 与普通 workload 强隔离，其权限不得通过共享 ServiceAccount、sidecar、volume 或 node identity 隐式传递。
+Cluster-scoped permission 必须有明确用途、独立 identity、可审计 actor/source、目标范围、撤销和轮换路径；cluster-scoped read 不自动等同于 host access 或 privileged capability。
+
+Host-access、privileged 或等价高风险 capability 必须使用普通 namespace、ServiceAccount 和 RBAC 不能提供或替代 host-level isolation 的 required isolation boundary，其权限不得通过共享 ServiceAccount、sidecar、volume 或 node identity 隐式传递。具体使用独立 node、sandbox runtime、cluster 或等价机制由后续部署设计决定，不预设 node 或 cluster 数量。
 
 Secret 和 credential 只通过受控 Secret/KMS Reference 使用，不进入普通 manifest、ConfigMap、Domain Event、task payload、log、metric label、trace attribute 或 read model。identity、Tenant、scope、authorization 或 dependency integrity 无法确认时 fail closed。
 
 ### Resource Governance
 
 - workload 声明可调度的 resource request、运行上限和适用的扩缩容输入，但本文不规定 CPU、memory、storage、replica 或 threshold 数值。
-- 使用 quota、limit、priority、preemption protection 或等价机制控制 noisy neighbor 和资源耗尽传播。
+- 使用 quota、limit 和可验证的资源与调度隔离结果控制 noisy neighbor 和资源耗尽传播。具体 PriorityClass、preemption 和 admission 机制由后续部署设计决定；non-preempting priority alone 不能保证 required isolation、capacity 或关键 workload 的持续可调度性。
 - 资源隔离与积压至少可按 capability、Tenant、connection、managed environment、Adapter 和 external dependency 观察。
 - 高 priority 只保护恢复、控制和必要平台运行能力，不能掩盖无界 queue、持续过载、失效 backpressure 或不完整 capacity planning。
 - autoscaling 可以增强运行能力，但不能绕过 required isolation、Tenant boundary、Secret boundary、disruption control 或 recovery verification。
@@ -119,7 +122,7 @@ Secret 和 credential 只通过受控 Secret/KMS Reference 使用，不进入普
 
 ### Scheduling and Failure Domains
 
-- **Required isolation：** 当 permission、authority、Secret exposure、host access、data corruption 或单点故障传播不可接受时，必须使用不可被 scheduler 自动弱化的隔离边界。
+- **Required isolation：** 当 permission、authority、Secret exposure、host access、data corruption 或单点故障传播不可接受时，必须使用不可被 scheduler 自动弱化的隔离边界；host-access 或 privileged capability 的边界不能由普通 namespace、ServiceAccount 或 RBAC 绕过。
 - **Preferred distribution：** 用于提高 availability、降低 noisy neighbor 或分散 dependency risk；资源不足时允许显式降级，但降级必须可观测、可审计并触发容量或恢复判断。
 
 Topology 使用 failure-domain label、anti-affinity、topology spread 或等价能力表达，不规定 node、zone、replica、cluster 或 region 数量。设计必须避免将同一关键 Control、Execution、state-preserving、Platform Operations 或 Connector capability 的全部有效实例静默集中到同一故障域。
@@ -128,14 +131,14 @@ failure domain 可以按 node、rack、zone、cluster、region、managed environ
 
 ### Workload Lifecycle and Maintenance
 
-- startup、readiness 和 liveness 分别表达初始化完成、可接收流量与运行健康，不能互相替代，也不能把 dependency unknown 伪装为 healthy。
+- startup 保护初始化阶段；readiness 表示可以接收 traffic 或 task；liveness 只检测需要通过 restart 恢复的本地进程状态。三者不能互相替代。外部 dependency unavailable 或 unknown 通常表现为 not-ready 或 degraded，而不是 liveness failure，避免 dependency outage 触发 restart cascade。
 - graceful termination 提供停止接单、完成或 checkpoint 当前任务、提交必要状态、释放 lease 和关闭受控 session 的机会。
 - disruption control 防止 drain、upgrade、rescheduling 或维护同时移除同一关键 capability 的全部可用实例，但本文不规定数值预算。
 - drain、upgrade 和 rescheduling 保留 task ownership、idempotency、checkpoint、connection recovery、policy/config version 与状态验证语义。
 - capacity headroom 支撑正常 rescheduling、维护和恢复；比例、节点规格和扩容 threshold 由部署设计决定。
-- incompatible version、missing identity、scope mismatch、stale authorization 或恢复 evidence 不足时 fail closed。
+- incompatible version、显式 invalid 或 missing identity、scope mismatch、stale authorization 或恢复 evidence 不足时 fail closed；identity issuer、authorization webhook 或 Kubernetes API 的暂时不可用按 dependency failure 处理，不转换为 liveness failure。
 
-Pod `Running`、container restart、queue acknowledgement、readiness 恢复或 rollout success 都不能断言业务 `completed`。只有 owning lifecycle Contract 在验证 terminal execution fact、expected version、scope 和 external-authority evidence 后才能推进 terminal lifecycle state。
+Pod `Running`、container restart、queue acknowledgement、readiness 恢复或 rollout success 都不能断言业务 `completed`。只有 owning lifecycle Contract 才能推进 terminal lifecycle state：它必须按操作类型验证适用的 terminal execution fact，或者当操作涉及 external authority 时验证适用的 external-authority reference/evidence；两条路径都必须始终验证 expected version 和 scope。
 
 ### Stateful Capability Boundary
 
@@ -163,9 +166,9 @@ Profile 复用 `COP-INFRA-001` 的名称和持续不变量：
 
 | Evolution profile | Kubernetes capability and isolation | Invariants and entry evidence |
 | --- | --- | --- |
-| MVP Self-hosted Baseline | capability 可以在共享 cluster 与共享 node infrastructure 上物理共置；使用明确 namespace、identity、RBAC、resource、health、disruption 和 recovery boundary | cluster-integrated 与高权限 workload 保持强隔离；保留 Tenant context；具备 drain、restart、Rebuild、Reconcile 与 dependency failure 验证；不预设 topology 数量 |
-| Resilient Self-hosted | 根据风险与证据增强 topology spread、redundancy、disruption control、capacity headroom、maintenance verification，并可拆分 node pool 或 cluster | 拆分不改变 Contract、authority、identity、Tenant 或 data boundary；进入依据来自风险、合规、负载、故障与运营成熟度证据 |
-| SaaS-ready Isolation | 增强 Tenant、workload、network、data 与 regional failure isolation，可按 Tenant 风险和负载拆分运行单元 | 不要求每 Tenant 一个 namespace 或 cluster；不依赖跨 region 全局事务、全局顺序或共享高权限 identity；延续自托管安全边界 |
+| MVP Self-hosted Baseline | capability 可以在共享 cluster 与共享 node infrastructure 上物理共置；使用明确 namespace、identity、RBAC、resource、health、disruption 和 recovery boundary | cluster-scoped read 使用专用 identity 与最小 RBAC；host-access 或 privileged capability 使用普通 namespace/RBAC 不能替代的 required isolation；保留 Tenant context；risk、compliance、load、observed failure 和 operational maturity evidence 已建立基线并证明共享 placement 满足边界；不预设 topology 数量 |
+| Resilient Self-hosted | 根据风险与证据增强 topology spread、redundancy、disruption control、capacity headroom、maintenance verification，并可拆分 node pool 或 cluster | 拆分不改变 Contract、authority、identity、Tenant 或 data boundary；risk、compliance、load、observed failure 和 operational maturity evidence 证明基线隔离、冗余或恢复能力需要增强 |
+| SaaS-ready Isolation | 增强 Tenant、workload、network、data 与 regional failure isolation，可按 Tenant 风险和负载拆分运行单元 | 不要求每 Tenant 一个 namespace 或 cluster；不依赖跨 region 全局事务、全局顺序或共享高权限 identity；risk、compliance、load、observed failure 和 operational maturity evidence 证明需要增强 Tenant 或 regional failure isolation，并延续自托管安全边界 |
 
 Profile 表达 isolation 与 operational capability maturity，不是产品套餐、环境名称或固定 cluster topology。进入下一 Profile 不依据发布时间或预设规模。
 
@@ -199,20 +202,20 @@ flowchart LR
   OWNER -->|"authorized data access"| DATA
   INGRESS -.->|"health / audit / recovery evidence"| OPS
   CONTROL -.->|"health / audit / recovery evidence"| OPS
-  EXEC -.->|"health / audit / recovery evidence"| OPS
+  EXEC -.->|"health / freshness / failure / audit / recovery evidence"| OPS
   DATA -.->|"health / audit / recovery evidence"| OPS
-  CONNECTOR -->|"outbound authenticated session"| EXEC
+  CONNECTOR -->|"outbound authenticated session / health / freshness / failure / recovery evidence"| EXEC
   CONNECTOR -->|"scoped discovery / collection"| LOCAL
 ```
 
-图中 placement 节点表示风险和隔离责任，不表示固定 Deployment、namespace、node pool、cluster 或 region。Owner Contract Boundary 是逻辑治理边界，不是独立 deployment unit；Command、Query、fact submission 和 Platform Data access 都不得绕过它。实线表示受治理访问或运行关系，虚线表示 scoped intent 或向 Platform Operations 汇聚的 operational evidence；箭头不表示共享写存储、隐式 trust、Tenant inheritance 或分布式事务。
+图中 placement 节点表示风险和隔离责任，不表示固定 Deployment、namespace、node pool、cluster 或 region。Owner Contract Boundary 是逻辑治理边界，不是独立 deployment unit；Command、Query、fact submission 和 Platform Data access 都不得绕过它。Connector/Collector 通过 outbound authenticated session 向 Execution 提交 health、freshness、failure 与 recovery evidence，再由 Execution 汇聚至 Platform Operations；该 evidence path 不授予 Platform Operations 业务或 lifecycle authority。实线表示受治理访问或运行关系，虚线表示 scoped intent 或向 Platform Operations 汇聚的 operational evidence；箭头不表示共享写存储、隐式 trust、Tenant inheritance 或分布式事务。
 
 ### Failure and Degradation Semantics
 
-- scheduling failure、resource pressure、node loss、drain blocked、runtime incompatibility、identity failure、RBAC denial、dependency unavailable 和 recovery evidence missing 必须分类呈现。
+- scheduling failure、resource pressure、node loss、drain blocked、runtime incompatibility、显式 identity/RBAC/scope failure、identity 或 authorization control dependency unavailable、Kubernetes API unavailable 和 recovery evidence missing 必须分类呈现。
 - required isolation 无法满足时 workload 不得调度或继续运行；preferred distribution 无法满足时显式报告 degraded 或 capacity constrained。
-- validation、identity、authorization、scope mismatch、incompatible version 和 forbidden privilege 属于 terminal configuration failure，不通过无限重试掩盖。
-- dependency、session 或 transient scheduling failure 只执行有界 retry 与 backoff，并保留 cancellation、checkpoint 和 reconciliation 路径。
+- validation、显式 invalid 或 missing identity、显式 RBAC denial、scope mismatch、incompatible version 和 forbidden privilege 属于 terminal configuration failure，不通过无限重试掩盖。
+- identity issuer、authorization webhook 或 Kubernetes API unavailable 属于 retryable dependency failure，只执行有界 retry 与 backoff，并显式报告 unavailable 或 degraded；dependency、session 或 transient scheduling failure 同样保留 cancellation、checkpoint 和 reconciliation 路径。
 - 单一 Tenant、connection、managed environment、Adapter、node 或 dependency 故障不得无边界阻塞其他隔离单元。
 - unknown、partial、stale、degraded、unavailable 和 recovering 不得伪装为 healthy、ready 或 completed。
 
@@ -221,10 +224,10 @@ flowchart LR
 - **Boundary：** 验证 Management 与 Managed Kubernetes Environment 可独立识别，客户业务 workload 不进入 COP ownership。
 - **Logical/physical：** 验证 namespace、Placement Class 与 Profile 可验证，同时不推导固定 Deployment、node pool、cluster 或 region 数量。
 - **Placement：** 验证 workload 能依据风险属性得到 required isolation 或 preferred distribution，多属性 workload 应用更严格边界。
-- **Security：** 验证 workload identity、ServiceAccount、RBAC、cluster-scoped permission、Secret Reference、Tenant context 与 fail closed。
+- **Security：** 验证 workload identity、ServiceAccount、RBAC、cluster-scoped permission、host-level required isolation、Secret Reference、Tenant context 与 fail closed，并区分显式 denial 与 identity/authorization control dependency unavailable。
 - **Resource：** 验证 request、limit、quota、priority、backpressure 和 capacity signal 防止 noisy neighbor，同时不引入数值配置。
 - **Scheduling：** 验证 node failure、resource shortage、drain、upgrade 和 rescheduling 不弱化 required isolation，preferred distribution 降级可观测。
-- **Lifecycle：** 验证 startup、readiness、liveness、termination、checkpoint、idempotency、Rebuild 和 Reconcile 语义互不混淆。
+- **Lifecycle：** 验证 startup、readiness、liveness、termination、checkpoint、idempotency、Rebuild 和 Reconcile 语义互不混淆，并确保外部 dependency unavailable/unknown 不通过 liveness restart cascade 处理。
 - **Completion：** 验证 Pod、container、queue、rollout 或 readiness 状态不能断言业务 completed。
 - **Managed connection：** 验证 Connector/Collector 保持 outbound authenticated session、最小 RBAC、scoped discovery 与客户 workload non-ownership。
 - **Profile：** 验证三个 Profile 只增强 isolation 与 operational capability，不改变 ownership、Contract、authority 或持续安全边界。
