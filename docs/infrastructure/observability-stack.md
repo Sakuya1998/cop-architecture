@@ -2,7 +2,7 @@
 id: COP-INFRA-004
 title: COP Observability Stack
 status: draft
-version: 0.2.0
+version: 0.2.1
 owners:
   - architecture
 last_updated: 2026-08-12
@@ -102,7 +102,7 @@ Managed Collector 位于受管环境，只主动建立 outbound authenticated se
 
 - network reachability、stored endpoint、cached result 或 successful authentication 不产生 query authorization。
 - Adapter 不复制长期 credential，只使用受控 Secret/KMS Reference。
-- external partial、stale、degraded 或 unavailable 必须保留，不能通过 cache 或历史结果伪装 complete/current。
+- external result completeness 中的 `Partial`、`Stale` 或 `Unavailable` 必须保留；execution/dependency health 的 `degraded` 单独报告，不能通过 cache 或历史结果伪装 `Complete` 或 current。
 
 ### Platform Telemetry Path
 
@@ -144,13 +144,13 @@ Telemetry Backend 保存 raw Metrics、Logs、Traces，并执行 owning external
 - COP 通过 reference、status、query 或 reconciliation 验证 external retention、deletion、hold 与 availability state，不直接推断。
 - cache、projection、export、backup 或 query result 延续源 classification、Tenant、scope、retention 与 deletion Contract，不降低保护级别。
 - Evaluation Input 是 Observability Contract 拥有的 immutable governed fact，具有独立 version、classification、retention 与 audit context；它不是 raw Telemetry 的完整副本。
-- raw Telemetry unavailable、deleted、held、partial 或 retention state unknown 时，对应 query 与 Evaluation Input generation 显式失败或降级。
+- raw Telemetry unavailable、deleted、`Partial` 或 retention state unknown 时，对应 query 与 Evaluation Input generation 显式失败或降级。held 数据的可见性与授权由 owning Contract 决定，并传播 hold state 与 provenance；只有 hold policy 导致数据不可访问、无法证明结果 current/complete，或 hold state 未知时才失败或降级，可访问且授权成立的 held 数据不因 held 状态本身被判定为失败。
 
 ### Governed Query and Evaluation Input
 
 Observability Contract 提交 versioned Query Intent；Query Runtime 只负责验证和执行。每次 query 至少绑定 identity、Tenant、Source/signal scope、purpose、time range、query/Contract version、authorization context 与 correlation context。
 
-Query result 必须包含适用的 `as_of`、covered time range、Source、Tenant、scope、query version、freshness、observed lag、completeness、failure evidence、provenance 与 result integrity reference。`complete`、`partial`、`stale`、`degraded` 和 `unavailable` 不得互相替代。
+Query result 必须包含适用的 `as_of`、covered time range、Source、Tenant、scope、query version、freshness、observed lag、completeness、failure evidence、provenance 与 result integrity reference。result completeness 仅为 `Complete`、`Partial`、`Stale` 或 `Unavailable`，四种状态不得互相替代。`degraded` 只描述 query execution 或 dependency health，不形成第五种 completeness；execution degraded 时仍必须单独给出适用的四态 completeness。
 
 只有 Observability Contract 可以基于受治理结果形成 immutable Evaluation Input。Alerting 只消费该输入并拥有后续 evaluation outcome 与 Alert lifecycle。Query Runtime、Backend、Collector、Dashboard 或 cache 都不能直接生成 Alert outcome、completed evidence 或业务事实。
 
@@ -161,7 +161,7 @@ Platform Observability 提供独立于 ordinary business query 的最小 health/
 - Collector/Adapter identity、connection、checkpoint、source reachability 与 local pressure；
 - pipeline throughput、queue/backlog、retry、drop、sampling、throttling、version rejection 与 dependency；
 - Backend ingestion/query availability、capacity constrained、latency、retention/deletion operation 与 recovery state；
-- Query Runtime authorization rejection、partial/stale/degraded、coverage 与 result integrity；
+- Query Runtime authorization rejection、四态 result completeness、coverage、result integrity 与独立的 execution/dependency degraded health；
 - evidence path 自身的 heartbeat、last-known-good、blind spot、unavailable scope 与 recovery progress。
 
 主 pipeline 故障时，最小路径仍说明从何时开始不可见、影响哪些 Tenant/Source/signal/pipeline stage、已知 drop/gap、当前 recovery stage 及哪些结论无法判断。缺少 operational Telemetry 不得解释为 component healthy、无 backlog、无 drop 或业务正常。
@@ -185,7 +185,7 @@ ordinary operational Metrics、Logs、Traces 不自动成为 Audit Evidence。�
 | Collect | connected、delayed、denied、checkpoint-gap、source-unavailable、isolated |
 | Process | accepted、sampled、throttled、dropped、duplicate、version-rejected、backlogged |
 | Store | committed、duplicate、capacity-constrained、retention-blocked、unavailable |
-| Query | complete、partial、stale、degraded、unavailable、authorization-denied |
+| Query | completeness: Complete、Partial、Stale、Unavailable；execution/dependency: healthy、degraded、authorization-denied |
 | Health Evidence | current、blind-spot、degraded、unavailable、recovering |
 
 任一 stage 无法确认时，不把下游 empty result 解释为“无异常”。状态按 Tenant、Source、signal、time range、pipeline stage 与 dependency 保留适用 scope。validation、authentication、authorization、scope mismatch 和 incompatible Contract 是 terminal failure；只有明确 retryable 的 dependency failure 执行有界 retry。
@@ -217,9 +217,12 @@ flowchart LR
   end
 
   subgraph PLATFORM["COP Observability Infrastructure"]
+    PLATFORM_SOURCE["COP Runtime Telemetry Sources"]
+    SESSION["Managed Session<br/>Scoped Task Authorization"]
     ADAPTER["Controlled Adapter"]
     PIPELINE["Telemetry Pipeline"]
     QUERY["Query Runtime"]
+    HEALTH_SOURCE["Health Evidence Self-Heartbeat"]
     HEALTH["Platform Health Evidence"]
   end
 
@@ -233,35 +236,43 @@ flowchart LR
     AUDIT["Audit / Compliance Contract"]
   end
 
+  OBS -->|"versioned Source / Binding + task scope"| SESSION
+  SESSION -->|"authorized task over outbound session"| COLLECTOR
   SOURCE -->|"scoped local collection"| COLLECTOR
   COLLECTOR -->|"outbound authenticated telemetry + evidence"| PIPELINE
-  ADAPTER -->|"authorized external ingest/query"| BACKEND
+  PLATFORM_SOURCE -->|"classified platform telemetry"| PIPELINE
+  OBS -->|"versioned Adapter Contract / Query Intent"| ADAPTER
+  ADAPTER -->|"Controlled Egress authorized query"| BACKEND
+  ADAPTER -->|"result + completeness/freshness"| OBS
   PIPELINE -->|"validated raw telemetry"| BACKEND
   OBS -->|"versioned Query Intent"| QUERY
   QUERY -->|"authorized query"| BACKEND
   QUERY -->|"result + completeness/freshness"| OBS
   OBS -->|"immutable Evaluation Input"| ALERT
+  COLLECTOR -.->|"identity/checkpoint/pressure/recovery"| HEALTH
+  ADAPTER -.->|"dependency/query/recovery"| HEALTH
   PIPELINE -.->|"health/backlog/drop/recovery"| HEALTH
   BACKEND -.->|"availability/capacity/recovery"| HEALTH
-  QUERY -.->|"partial/stale/degraded"| HEALTH
+  QUERY -.->|"execution/dependency degraded"| HEALTH
+  HEALTH_SOURCE -.->|"self-heartbeat / blind spot / recovery"| HEALTH
   PIPELINE -.->|"sampling / drop policy audit record"| AUDIT
   QUERY -.->|"sensitive query / export audit record"| AUDIT
   HEALTH -.->|"recovery action audit record"| AUDIT
 ```
 
-箭头只表示受治理 Contract、authority-preserving Telemetry flow、evidence flow 或最小 audit record submission，不表示固定 deployment topology、共享可写存储、隐式 trust、跨 Tenant access 或分布式事务。Audit/Compliance 只拥有审计策略与记录语义；Pipeline、Query Runtime 与 Health Evidence 只提交关键管理操作的结构化记录，不获得 audit authority。
+箭头只表示受治理 Contract、authority-preserving Telemetry flow、evidence flow 或最小 audit record submission，不表示固定 deployment topology、共享可写存储、隐式 trust、跨 Tenant access 或分布式事务。Managed Session 节点只表达 outbound session identity 与 scoped task authorization 的逻辑边界；Platform Telemetry source、Collector、Adapter 与 self-heartbeat 的 evidence flow 只表达最小可判定 health path，不要求独立产品或固定部署。Audit/Compliance 只拥有审计策略与记录语义；Pipeline、Query Runtime 与 Health Evidence 只提交关键管理操作的结构化记录，不获得 audit authority。
 
 ### Validation Strategy
 
 - **Authority：** 验证 raw Telemetry、Source/Binding/Query Intent/Evaluation Input、Alert outcome/lifecycle、Resource Identity 与 Audit semantics 的 owner 可独立识别。
 - **Dual observability：** 验证 Managed-Environment 与 Platform Observability 可以共享 capability，但 Source、Tenant、pipeline/query scope、authorization 与 failure propagation 不混淆。
-- **Collection：** 验证 Managed Collector outbound-only、scoped task、checkpoint、freshness 与 Adapter Controlled Egress。
+- **Collection：** 验证 Managed Collector outbound-only、Managed Session identity 与 scoped task authorization 分离、checkpoint、freshness，以及 Adapter 只接收 owning Observability Contract 的 versioned input 并经 Controlled Egress 查询。
 - **Transform：** 验证只执行 validate、normalize、filter、redact、route、sample 并保留 provenance，不生成领域事实。
 - **Delivery：** 注入 duplicate、delay、out-of-order、drop、sampling、throttling、backpressure 与 version mismatch，验证端到端 evidence。
-- **Query：** 验证 Query Intent、authorization、time coverage、`as_of`、freshness、completeness，以及 Alerting 只消费 immutable Evaluation Input。
-- **Health path：** 中断主 pipeline、Backend 或 Query，验证最小 evidence path 仍表达 blind spot、影响范围与 recovery progress。
+- **Query：** 验证 Query Intent、authorization、time coverage、`as_of`、freshness、四态 completeness，以及 execution/dependency degraded 独立表达；Alerting 只消费 immutable Evaluation Input。
+- **Health path：** 中断 Collector、Adapter、主 pipeline、Backend 或 Query，验证最小 evidence path 及 self-heartbeat 仍表达 blind spot、影响范围与 recovery progress。
 - **Security：** 验证跨 Tenant/Source 默认拒绝、敏感字段最小化/脱敏、Secret 泄漏阻断、query/export/administration audit。
-- **Lifecycle：** 验证 raw Telemetry 与 COP metadata/Evaluation Input 的 retention/deletion/hold authority 分离及 reconciliation。
+- **Lifecycle：** 验证 raw Telemetry 与 COP metadata/Evaluation Input 的 retention/deletion/hold authority 分离及 reconciliation，并验证 held 数据可见性由 owning Contract 决定且传播 hold state/provenance。
 - **Recovery：** 验证 checkpoint resume、replay、gap detection、reconciliation、query completeness 与 health evidence continuity。
 - **Profile：** 验证三个 Profile 只增强 isolation、redundancy、capacity、recovery 与 governance，不改变 authority。
 
@@ -272,7 +283,7 @@ flowchart LR
 - raw Telemetry 始终由 Telemetry Backend owning Contract 拥有；Observability 拥有 Query Intent/completeness/Evaluation Input，Alerting 拥有 outcome/lifecycle。
 - Collector/Adapter、pipeline、Backend acknowledgement、query result、cache、Dashboard 或 health signal 不会被解释为业务事实、Alert outcome、Audit Evidence 或 completed。
 - `at-least-once`、bounded buffer/retry、backpressure、duplicate/delay/out-of-order/drop/sampling/throttling 具有显式 evidence。
-- empty、partial、stale、degraded、unavailable、unknown 与 blind-spot 不会伪装为 healthy、complete 或无异常。
+- empty、unknown 与 blind-spot 不会伪装为无异常；`Partial`、`Stale` 或 `Unavailable` 不会伪装为 `Complete`，execution/dependency degraded 也不会被误写为 completeness。
 - 主 pipeline 故障时仍存在最小可判定的 Platform Health Evidence。
 - classification、Tenant、scope、authorization、Secret、retention/deletion/hold 与 provenance 随数据路径传播。
 - 三个 Evolution Profile 只增强 isolation 与 operational capability。
@@ -284,7 +295,7 @@ flowchart LR
 - Infrastructure capability 不获得 Resource、Observability、Alerting、Audit、Tenant、authorization、lifecycle 或 raw Telemetry authority。
 - Managed 与 Platform Observability 可以物理共享 capability，但 identity、Tenant、Source、classification、authorization、pipeline/query scope、failure 与 evidence 必须可独立验证。
 - Telemetry pipeline 使用 `at-least-once` 与有界资源，不假设 exactly-once、全局顺序、无损传输或分布式事务。
-- unknown、empty、partial、stale、degraded、unavailable、blind-spot 和 recovering 不得伪装为 healthy、complete、current 或 success。
+- unknown、empty、blind-spot 和 recovering 不得伪装为 healthy、current 或 success；result completeness 仅使用 `Complete`、`Partial`、`Stale`、`Unavailable`，execution/dependency degraded 必须独立表达。
 - 不得在本文或实施任务中固定产品、service mapping、protocol、schema、topology count、capacity、retention、sampling 数值、RPO/RTO 或数值 SLO。
 
 ## Quality Attributes
