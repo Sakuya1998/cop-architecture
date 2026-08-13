@@ -2,7 +2,7 @@
 id: COP-INFRA-004
 title: COP Observability Stack
 status: draft
-version: 0.2.2
+version: 0.2.3
 owners:
   - architecture
 last_updated: 2026-08-12
@@ -239,17 +239,17 @@ flowchart LR
   OBS -->|"versioned Source / Binding + task scope"| SESSION
   COLLECTOR -->|"initiates outbound authenticated session"| SESSION
   SESSION -->|"authorized task over outbound session"| COLLECTOR
+  COLLECTOR -->|"fact/progress/freshness/failure/recovery evidence over established session"| SESSION
   SOURCE -->|"scoped local collection"| COLLECTOR
   COLLECTOR -->|"outbound authenticated telemetry + evidence"| PIPELINE
   PLATFORM_SOURCE -->|"classified platform telemetry"| PIPELINE
-  OBS -->|"versioned Adapter Contract / Query Intent"| ADAPTER
+  OBS -->|"versioned Query Intent"| QUERY
+  QUERY -->|"validated Adapter Contract + authorized query scope"| ADAPTER
   ADAPTER -->|"Controlled Egress authorized query"| BACKEND
   BACKEND -->|"raw query result + backend evidence"| ADAPTER
-  ADAPTER -->|"result + completeness/freshness"| OBS
+  ADAPTER -->|"external result + backend evidence"| QUERY
+  QUERY -->|"governed result + completeness/freshness"| OBS
   PIPELINE -->|"validated raw telemetry"| BACKEND
-  OBS -->|"versioned Query Intent"| QUERY
-  QUERY -->|"authorized query"| BACKEND
-  QUERY -->|"result + completeness/freshness"| OBS
   OBS -->|"immutable Evaluation Input"| ALERT
   COLLECTOR -.->|"identity/checkpoint/pressure/recovery"| HEALTH
   ADAPTER -.->|"dependency/query/recovery"| HEALTH
@@ -262,16 +262,16 @@ flowchart LR
   HEALTH -.->|"recovery action audit record"| AUDIT
 ```
 
-箭头只表示受治理 Contract、authority-preserving Telemetry flow、query result/evidence flow 或最小 audit record submission，不表示固定 deployment topology、共享可写存储、隐式 trust、跨 Tenant access、authority transfer 或分布式事务。Collector 到 Managed Session 的箭头只表示 connection initiation；反向箭头只表示已建立 outbound session 内的 authorized task message。Backend 返回 Adapter 的 raw query result 与 evidence 保持 External Infrastructure authority，Adapter 回流 Observability 的是受治理 result、completeness 与 freshness。Platform Telemetry source、Collector、Adapter 与 self-heartbeat 的 evidence flow 只表达最小可判定 health path，不要求独立产品或固定部署。Audit/Compliance 只拥有审计策略与记录语义；Pipeline、Query Runtime 与 Health Evidence 只提交关键管理操作的结构化记录，不获得 audit authority。
+箭头只表示受治理 Contract、authority-preserving Telemetry flow、query result/evidence flow 或最小 audit record submission，不表示固定 deployment topology、共享可写存储、隐式 trust、跨 Tenant access、authority transfer 或分布式事务。Collector 到 Managed Session 的第一条箭头只表示 connection initiation；Session 到 Collector 表示已建立 outbound session 内的 authorized task message；Collector 返回 Session 的 fact/progress/freshness/failure/recovery evidence 同样复用已建立 session，不建立新的 inbound connection，也不替代 Collector 到 Pipeline 的 raw Telemetry ingestion。Query Runtime 验证 Query Intent、authorization 与 Adapter Contract，Adapter 只经 Controlled Egress 执行 external query/poll/stream。Backend 返回的 raw result 与 backend evidence 在 Adapter 和 Query Runtime 间始终保持 External Infrastructure authority；Query Runtime 只产生 governed result semantics，Adapter 不拥有 Query Intent 或 completeness authority；Observability 继续拥有 completeness domain state 与 Evaluation Input。Platform Telemetry source、Collector、Adapter 与 self-heartbeat 的 evidence flow 只表达最小可判定 health path，不要求独立产品或固定部署。Audit/Compliance 只拥有审计策略与记录语义；Pipeline、Query Runtime 与 Health Evidence 只提交关键管理操作的结构化记录，不获得 audit authority。
 
 ### Validation Strategy
 
 - **Authority：** 验证 raw Telemetry、Source/Binding/Query Intent/Evaluation Input、Alert outcome/lifecycle、Resource Identity 与 Audit semantics 的 owner 可独立识别。
 - **Dual observability：** 验证 Managed-Environment 与 Platform Observability 可以共享 capability，但 Source、Tenant、pipeline/query scope、authorization 与 failure propagation 不混淆。
-- **Collection：** 验证 Managed Collector outbound-only、Managed Session identity 与 scoped task authorization 分离、checkpoint、freshness，以及 Adapter 只接收 owning Observability Contract 的 versioned input 并经 Controlled Egress 查询。
+- **Collection：** 验证 Managed Collector outbound-only、Managed Session identity 与 scoped task authorization 分离、authorized task message 与 fact/progress/freshness/failure/recovery evidence 共用已建立 session 且不创建 inbound connection，并与 raw Telemetry ingestion 保持独立。
 - **Transform：** 验证只执行 validate、normalize、filter、redact、route、sample 并保留 provenance，不生成领域事实。
 - **Delivery：** 注入 duplicate、delay、out-of-order、drop、sampling、throttling、backpressure 与 version mismatch，验证端到端 evidence。
-- **Query：** 验证 Query Intent、authorization、time coverage、`as_of`、freshness、四态 completeness，以及 execution/dependency degraded 独立表达；Alerting 只消费 immutable Evaluation Input。
+- **Query：** 验证 Query Runtime 接收 versioned Query Intent，验证 authorization 与 Adapter Contract 后向 Adapter 提供 authorized query scope；Adapter 经 Controlled Egress 执行 external query/poll/stream 并把 external result/evidence 返回 Query Runtime；Query Runtime 产生 `as_of`、freshness、四态 completeness 与 governed failure semantics，Observability 拥有 completeness domain state 并形成 immutable Evaluation Input，Alerting 只消费该输入。
 - **Health path：** 中断 Collector、Adapter、主 pipeline、Backend 或 Query，验证最小 evidence path 及 self-heartbeat 仍表达 blind spot、影响范围与 recovery progress。
 - **Security：** 验证跨 Tenant/Source 默认拒绝、敏感字段最小化/脱敏、Secret 泄漏阻断、query/export/administration audit。
 - **Lifecycle：** 验证 raw Telemetry 与 COP metadata/Evaluation Input 的 retention/deletion/hold authority 分离及 reconciliation；raw facts/evidence 不使用 result completeness 状态，coverage gap 或 Backend/source partial response 映射为 query result `Partial`；held 数据可见性由 owning Contract 决定且传播 hold state/provenance。
