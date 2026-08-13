@@ -2,7 +2,7 @@
 id: COP-INFRA-004
 title: COP Observability Stack
 status: draft
-version: 0.2.1
+version: 0.2.2
 owners:
   - architecture
 last_updated: 2026-08-12
@@ -144,7 +144,7 @@ Telemetry Backend 保存 raw Metrics、Logs、Traces，并执行 owning external
 - COP 通过 reference、status、query 或 reconciliation 验证 external retention、deletion、hold 与 availability state，不直接推断。
 - cache、projection、export、backup 或 query result 延续源 classification、Tenant、scope、retention 与 deletion Contract，不降低保护级别。
 - Evaluation Input 是 Observability Contract 拥有的 immutable governed fact，具有独立 version、classification、retention 与 audit context；它不是 raw Telemetry 的完整副本。
-- raw Telemetry unavailable、deleted、`Partial` 或 retention state unknown 时，对应 query 与 Evaluation Input generation 显式失败或降级。held 数据的可见性与授权由 owning Contract 决定，并传播 hold state 与 provenance；只有 hold policy 导致数据不可访问、无法证明结果 current/complete，或 hold state 未知时才失败或降级，可访问且授权成立的 held 数据不因 held 状态本身被判定为失败。
+- raw Telemetry 只保留 unavailable、deleted、coverage gap、retention state unknown、source/backend partial response 等事实或 evidence，不使用 result completeness 状态描述原始数据。coverage gap 或 Backend/source partial response 会使对应 query result completeness 成为 `Partial`；无法访问或无法确定适用覆盖范围时，query 与 Evaluation Input generation 显式失败或降级。held 数据的可见性与授权由 owning Contract 决定，并传播 hold state 与 provenance；只有 hold policy 导致数据不可访问、无法证明结果 current/complete，或 hold state 未知时才失败或降级，可访问且授权成立的 held 数据不因 held 状态本身被判定为失败。
 
 ### Governed Query and Evaluation Input
 
@@ -237,12 +237,14 @@ flowchart LR
   end
 
   OBS -->|"versioned Source / Binding + task scope"| SESSION
+  COLLECTOR -->|"initiates outbound authenticated session"| SESSION
   SESSION -->|"authorized task over outbound session"| COLLECTOR
   SOURCE -->|"scoped local collection"| COLLECTOR
   COLLECTOR -->|"outbound authenticated telemetry + evidence"| PIPELINE
   PLATFORM_SOURCE -->|"classified platform telemetry"| PIPELINE
   OBS -->|"versioned Adapter Contract / Query Intent"| ADAPTER
   ADAPTER -->|"Controlled Egress authorized query"| BACKEND
+  BACKEND -->|"raw query result + backend evidence"| ADAPTER
   ADAPTER -->|"result + completeness/freshness"| OBS
   PIPELINE -->|"validated raw telemetry"| BACKEND
   OBS -->|"versioned Query Intent"| QUERY
@@ -260,7 +262,7 @@ flowchart LR
   HEALTH -.->|"recovery action audit record"| AUDIT
 ```
 
-箭头只表示受治理 Contract、authority-preserving Telemetry flow、evidence flow 或最小 audit record submission，不表示固定 deployment topology、共享可写存储、隐式 trust、跨 Tenant access 或分布式事务。Managed Session 节点只表达 outbound session identity 与 scoped task authorization 的逻辑边界；Platform Telemetry source、Collector、Adapter 与 self-heartbeat 的 evidence flow 只表达最小可判定 health path，不要求独立产品或固定部署。Audit/Compliance 只拥有审计策略与记录语义；Pipeline、Query Runtime 与 Health Evidence 只提交关键管理操作的结构化记录，不获得 audit authority。
+箭头只表示受治理 Contract、authority-preserving Telemetry flow、query result/evidence flow 或最小 audit record submission，不表示固定 deployment topology、共享可写存储、隐式 trust、跨 Tenant access、authority transfer 或分布式事务。Collector 到 Managed Session 的箭头只表示 connection initiation；反向箭头只表示已建立 outbound session 内的 authorized task message。Backend 返回 Adapter 的 raw query result 与 evidence 保持 External Infrastructure authority，Adapter 回流 Observability 的是受治理 result、completeness 与 freshness。Platform Telemetry source、Collector、Adapter 与 self-heartbeat 的 evidence flow 只表达最小可判定 health path，不要求独立产品或固定部署。Audit/Compliance 只拥有审计策略与记录语义；Pipeline、Query Runtime 与 Health Evidence 只提交关键管理操作的结构化记录，不获得 audit authority。
 
 ### Validation Strategy
 
@@ -272,7 +274,7 @@ flowchart LR
 - **Query：** 验证 Query Intent、authorization、time coverage、`as_of`、freshness、四态 completeness，以及 execution/dependency degraded 独立表达；Alerting 只消费 immutable Evaluation Input。
 - **Health path：** 中断 Collector、Adapter、主 pipeline、Backend 或 Query，验证最小 evidence path 及 self-heartbeat 仍表达 blind spot、影响范围与 recovery progress。
 - **Security：** 验证跨 Tenant/Source 默认拒绝、敏感字段最小化/脱敏、Secret 泄漏阻断、query/export/administration audit。
-- **Lifecycle：** 验证 raw Telemetry 与 COP metadata/Evaluation Input 的 retention/deletion/hold authority 分离及 reconciliation，并验证 held 数据可见性由 owning Contract 决定且传播 hold state/provenance。
+- **Lifecycle：** 验证 raw Telemetry 与 COP metadata/Evaluation Input 的 retention/deletion/hold authority 分离及 reconciliation；raw facts/evidence 不使用 result completeness 状态，coverage gap 或 Backend/source partial response 映射为 query result `Partial`；held 数据可见性由 owning Contract 决定且传播 hold state/provenance。
 - **Recovery：** 验证 checkpoint resume、replay、gap detection、reconciliation、query completeness 与 health evidence continuity。
 - **Profile：** 验证三个 Profile 只增强 isolation、redundancy、capacity、recovery 与 governance，不改变 authority。
 
